@@ -27,21 +27,21 @@
     :alt: Project generated with PyScaffold
     :target: https://pyscaffold.org/
 
-|
+|testBadge| |publishBadge|
 
-=====
-dhali
-=====
+.. |testBadge| image:: https://github.com/Dhali-org/Dhali-py/actions/workflows/package_test.yaml/badge.svg
+
+.. |publishBadge| image:: https://github.com/Dhali-org/Dhali-py/actions/workflows/release.yaml/badge.svg
+
+========
+Dhali-py
+========
 
 
-    This python module is used across the dhali backend microservices
+    This python package is intended to support interfacing with Dhali.
+    It is currently only used by Dhali to support payment-claim transaction validation on the Dhali backend microservices.
 
 
-=======
-Release
-=======
-
-`twine upload --verbose --repository-url https://us-central1-python.pkg.dev/kernml/dhali dist/*.whl`
 
 .. _pyscaffold-notes:
 
