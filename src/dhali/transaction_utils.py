@@ -118,16 +118,27 @@ request_charge_header_key = "Dhali-Request-Charge"
 
 
 def convert_dollars_to_xrp(dollars: float):
+    if dollars < 0:
+        raise ValueError("You must provide a non-negative dollar value")
     rate = 2.5  # TODO fetch dynamically
     return dollars * rate
 
 
 def determine_cost_dollars(
-    machine_type: str,
     runtime_ms: float,
+    machine_type: str = "TODO",
     request_size_bytes: int = 1,
     response_size_bytes: int = 1,
 ):
+    if machine_type not in ["TODO"]:
+        raise ValueError("Unsupported machine type requested")
+    elif runtime_ms < 0:
+        raise ValueError("Runtimes must be positive")
+    elif request_size_bytes < 0:
+        raise ValueError("The size of a request cannot be negative")
+    elif response_size_bytes < 0:
+        raise ValueError("The size of a response cannot be negative")
+
     fudge_factor = (
         5  # TODO Introducing this to ensure we do not under charge (must be >= 1)
     )
