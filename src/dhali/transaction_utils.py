@@ -13,7 +13,7 @@ def transactional_validation(
     parsed_claim,
     single_request_cost_estimate: int,
     settle_delay,
-):
+) -> float:
     payment_claim_doc = next(transaction.get(doc_ref))
 
     if payment_claim_doc.exists:
@@ -112,9 +112,10 @@ def transactional_validation(
                 "payment_claim": json.dumps(parsed_claim),
             },
         )
+    return to_claim
 
-
-request_charge_header_key = "Dhali-Request-Charge"
+request_charge_header_key = "Dhali-Latest-Request-Charge"
+request_total_charge_header_key = "Dhali-Total-Requests-Charge"
 
 
 def convert_dollars_to_xrp(dollars: float):
@@ -160,7 +161,7 @@ def determine_cost_dollars(
 
 async def update_estimated_cost_with_exact(
     claim, single_request_cost_estimate: int, single_request_exact_cost: int, db
-):
+) -> float:
     """
     TODO
 
@@ -208,6 +209,7 @@ async def update_estimated_cost_with_exact(
             + single_request_exact_cost
         )
         payment_claim_doc_ref.update({"to_claim": to_claim})
+        return to_claim
     else:
         raise HTTPException(status_code=402)
 
@@ -271,7 +273,7 @@ async def validate_claim(
 
     transaction = db.transaction()
     payment_claim_doc_ref = db.collection(collection_name).document(uuid_channel_id)
-    response = transactional_validation(
+    to_claim = transactional_validation(
         transaction,
         payment_claim_doc_ref,
         ledger_client=client,
@@ -279,4 +281,4 @@ async def validate_claim(
         single_request_cost_estimate=single_request_cost_estimate,
         settle_delay=settle_delay,
     )
-    return response
+    return to_claim
