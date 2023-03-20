@@ -14,22 +14,26 @@ def transactional_validation(
     single_request_cost_estimate: int,
     settle_delay,
 ) -> float:
-    payment_claim_doc = next(transaction.get(doc_ref))
+    payment_channels_doc = next(transaction.get(doc_ref))
 
-    if payment_claim_doc.exists:
-        if payment_claim_doc.to_dict()["currency"]["code"] != "XRP":
+    updating_payment_claim = True
+    if payment_channels_doc.exists:
+        # Check if payment claim was previously submitted. If so, we do not need
+        # to cryptographically verify it again 
+        updating_payment_claim = json.loads(payment_channels_doc.to_dict()["payment_claim"]) != parsed_claim
+        if payment_channels_doc.to_dict()["currency"]["code"] != "XRP":
             raise HTTPException(
                 status_code=402,
                 detail="Your stored payment channel's currency code is invalid",
             )
-        if payment_claim_doc.to_dict()["currency"]["scale"] != 0.000001:
+        if payment_channels_doc.to_dict()["currency"]["scale"] != 0.000001:
             raise HTTPException(
                 status_code=402,
                 detail="Your stored payment channel's currency scale is invalid",
             )
 
         to_claim = (
-            payment_claim_doc.to_dict()["to_claim"] + single_request_cost_estimate
+            payment_channels_doc.to_dict()["to_claim"] + single_request_cost_estimate
         )
     else:
         to_claim = single_request_cost_estimate
@@ -40,6 +44,27 @@ def transactional_validation(
             status_code=402,
             detail=f"Your payment claim is not sufficient to fund this request: authorized_to_claim = {authorized_to_claim}, to_claim = {to_claim}",
         )
+
+    if updating_payment_claim:
+        validate(parsed_claim=parsed_claim, ledger_client=ledger_client, settle_delay=settle_delay)
+
+    if payment_channels_doc.exists:
+        transaction.update(doc_ref, {"to_claim": to_claim})
+    else:
+        # The expectations are:
+        # authorized_to_claim >= to_claim
+        transaction.set(
+            doc_ref,
+            {
+                "authorized_to_claim": parsed_claim["authorized_to_claim"],
+                "to_claim": to_claim,
+                "currency": {"code": "XRP", "scale": 0.000001},
+                "payment_claim": json.dumps(parsed_claim),
+            },
+        )
+    return to_claim
+
+def validate(parsed_claim, ledger_client, settle_delay):
 
     account_channels = xrpl.models.requests.AccountChannels(
         account=parsed_claim["account"],
@@ -83,7 +108,7 @@ def transactional_validation(
         )
 
     channel_verify = xrpl.models.requests.ChannelVerify(
-        amount=authorized_to_claim,
+        amount=parsed_claim["authorized_to_claim"],
         channel_id=parsed_claim["channel_id"],
         public_key=channel["public_key"],
         signature=parsed_claim["signature"],
@@ -97,22 +122,6 @@ def transactional_validation(
         raise HTTPException(
             status_code=402, detail=f"Your signature could not be verified"
         )
-
-    if payment_claim_doc.exists:
-        transaction.update(doc_ref, {"to_claim": to_claim})
-    else:
-        # The expectations are:
-        # authorized_to_claim >= to_claim
-        transaction.set(
-            doc_ref,
-            {
-                "authorized_to_claim": parsed_claim["authorized_to_claim"],
-                "to_claim": to_claim,
-                "currency": {"code": "XRP", "scale": 0.000001},
-                "payment_claim": json.dumps(parsed_claim),
-            },
-        )
-    return to_claim
 
 request_charge_header_key = "Dhali-Latest-Request-Charge"
 request_total_charge_header_key = "Dhali-Total-Requests-Charge"
