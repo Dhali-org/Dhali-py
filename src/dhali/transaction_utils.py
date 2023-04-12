@@ -225,7 +225,7 @@ async def update_estimated_cost_with_exact(
 
 # TODO - Test this!
 async def validate_claim(
-    client, claim, single_request_cost_estimate: int, db, settle_delay=15768000
+    client, claim, single_request_cost_estimate: int, db, destination_account: str, settle_delay=15768000
 ):
     """
     TODO
@@ -277,6 +277,14 @@ async def validate_claim(
                 status_code=402,
                 detail=f"Your claim must be in Json format, providing the following fields: {keys}",
             )
+
+    if destination_account != parsed_claim["destination_account"]:
+        raise HTTPException(
+            status_code=402,
+            detail=f"Your claim has an incorrect destination_account",
+        )
+
+
     uuid_channel_id = str(uuid.uuid5(uuid.NAMESPACE_URL, parsed_claim["channel_id"]))
     collection_name = "payment_channels"
 
