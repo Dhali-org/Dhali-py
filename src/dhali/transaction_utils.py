@@ -183,6 +183,32 @@ def determine_cost_dollars(
     return consumed_GiB_s * GiB_s_dollars_price
 
 
+@firestore.transactional
+def _transactional_update_estimated_cost_with_exact(transaction, 
+                                                    public_doc_ref,
+                                                    private_doc_ref,
+                                                    single_request_cost_estimate: int, 
+                                                    single_request_exact_cost: int):
+    private_payment_channels_doc = next(transaction.get(private_doc_ref))
+    public_payment_channels_doc = next(transaction.get(public_doc_ref))
+
+    if public_payment_channels_doc.exists and private_payment_channels_doc.exists: # TODO: Remove private_payment_claim_doc
+                                                                             # clause once migrated other code to use
+                                                                             # public firestore
+        to_claim = (
+            public_payment_channels_doc.to_dict()["to_claim"]
+            - single_request_cost_estimate
+            + single_request_exact_cost
+        )
+        
+        transaction.update(public_doc_ref, {"to_claim": to_claim})
+        transaction.update(private_doc_ref, {"to_claim": to_claim}) # TODO: Remove this line once migrated
+                                                                                  # other code to use public firestore
+        return to_claim
+
+    raise HTTPException(status_code=402)
+
+
 # TODO: Make this transactional!
 async def update_estimated_cost_with_exact(
     claim, single_request_cost_estimate: int, single_request_exact_cost: int, db
@@ -226,27 +252,16 @@ async def update_estimated_cost_with_exact(
     private_collection_name = "public_claim_info"
 
     public_payment_claim_doc_ref = db.collection(public_collection_name).document(uuid_channel_id)
-    public_payment_claim_doc = public_payment_claim_doc_ref.get()
-
     private_payment_claim_doc_ref = db.collection(private_collection_name).document(uuid_channel_id)
-    private_payment_claim_doc = private_payment_claim_doc_ref.get()
+    
+    transaction = db.transaction()
+    to_claim = _transactional_update_estimated_cost_with_exact(transaction, 
+                                                           public_payment_claim_doc_ref, 
+                                                           private_payment_claim_doc_ref, 
+                                                           single_request_cost_estimate, 
+                                                           single_request_exact_cost)
+    return to_claim
 
-    if public_payment_claim_doc.exists and private_payment_claim_doc.exists: # TODO: Remove private_payment_claim_doc
-                                                                             # clause once migrated other code to use
-                                                                             # public firestore
-        to_claim = (
-            public_payment_claim_doc.to_dict()["to_claim"]
-            - single_request_cost_estimate
-            + single_request_exact_cost
-        )
-        public_payment_claim_doc_ref.update({"to_claim": to_claim})
-        private_payment_claim_doc_ref.update({"to_claim": to_claim})
-        #transaction.update(public_payment_claim_doc_ref, {"to_claim": to_claim})
-        #transaction.update(private_payment_claim_doc_ref, {"to_claim": to_claim}) # TODO: Remove this line once migrated
-                                                                                  # other code to use public firestore
-        return to_claim
-
-    raise HTTPException(status_code=402)
 
 
 # TODO - Test this!
