@@ -1,39 +1,40 @@
 import json
 import xrpl
-from fastapi import HTTPException
 import uuid
+from fastapi import HTTPException
 from google.cloud import firestore
 
-
 @firestore.transactional
-def transactional_validation(
+def _transactional_validation(
     transaction,
-    doc_ref,
+    public_doc_ref,
+    private_doc_ref,
     ledger_client,
     parsed_claim,
     single_request_cost_estimate: int,
     settle_delay,
 ) -> float:
-    payment_channels_doc = next(transaction.get(doc_ref))
+    private_payment_channels_doc = next(transaction.get(private_doc_ref))
+    public_payment_channels_doc = next(transaction.get(public_doc_ref))
 
     updating_payment_claim = True
-    if payment_channels_doc.exists:
+    if private_payment_channels_doc.exists:
         # Check if payment claim was previously submitted. If so, we do not need
         # to cryptographically verify it again 
-        updating_payment_claim = json.loads(payment_channels_doc.to_dict()["payment_claim"]) != parsed_claim
-        if payment_channels_doc.to_dict()["currency"]["code"] != "XRP":
+        updating_payment_claim = json.loads(private_payment_channels_doc.to_dict()["payment_claim"]) != parsed_claim
+        if private_payment_channels_doc.to_dict()["currency"]["code"] != "XRP":
             raise HTTPException(
                 status_code=402,
                 detail="Your stored payment channel's currency code is invalid",
             )
-        if payment_channels_doc.to_dict()["currency"]["scale"] != 0.000001:
+        if private_payment_channels_doc.to_dict()["currency"]["scale"] != 0.000001:
             raise HTTPException(
                 status_code=402,
                 detail="Your stored payment channel's currency scale is invalid",
             )
 
         to_claim = (
-            payment_channels_doc.to_dict()["to_claim"] + single_request_cost_estimate
+            private_payment_channels_doc.to_dict()["to_claim"] + single_request_cost_estimate
         )
     else:
         to_claim = single_request_cost_estimate
@@ -48,20 +49,34 @@ def transactional_validation(
     if updating_payment_claim:
         validate(parsed_claim=parsed_claim, ledger_client=ledger_client, settle_delay=settle_delay)
 
-    if payment_channels_doc.exists:
-        transaction.update(doc_ref, {"to_claim": to_claim})
+    if private_payment_channels_doc.exists:
+        transaction.update(private_doc_ref, {"to_claim": to_claim})
     else:
         # The expectations are:
         # authorized_to_claim >= to_claim
         transaction.set(
-            doc_ref,
+            private_doc_ref,
             {
                 "authorized_to_claim": parsed_claim["authorized_to_claim"],
-                "to_claim": to_claim,
+                "to_claim": to_claim, # TODO: Remove this once other infra migrated to use public firestore
                 "currency": {"code": "XRP", "scale": 0.000001},
                 "payment_claim": json.dumps(parsed_claim),
             },
         )
+
+    if public_payment_channels_doc.exists:
+        transaction.update(public_doc_ref, {"to_claim": to_claim})
+    else:
+        # The expectations are:
+        # authorized_to_claim >= to_claim
+        transaction.set(
+            public_doc_ref,
+            {
+                "to_claim": to_claim,
+                "currency": {"code": "XRP", "scale": 0.000001},
+            },
+        )
+
     return to_claim
 
 def validate(parsed_claim, ledger_client, settle_delay):
@@ -168,6 +183,33 @@ def determine_cost_dollars(
     return consumed_GiB_s * GiB_s_dollars_price
 
 
+@firestore.transactional
+def _transactional_update_estimated_cost_with_exact(transaction, 
+                                                    public_doc_ref,
+                                                    private_doc_ref,
+                                                    single_request_cost_estimate: int, 
+                                                    single_request_exact_cost: int):
+    private_payment_channels_doc = next(transaction.get(private_doc_ref))
+    public_payment_channels_doc = next(transaction.get(public_doc_ref))
+
+    if public_payment_channels_doc.exists and private_payment_channels_doc.exists: # TODO: Remove private_payment_claim_doc
+                                                                             # clause once migrated other code to use
+                                                                             # public firestore
+        to_claim = (
+            public_payment_channels_doc.to_dict()["to_claim"]
+            - single_request_cost_estimate
+            + single_request_exact_cost
+        )
+        
+        transaction.update(public_doc_ref, {"to_claim": to_claim})
+        transaction.update(private_doc_ref, {"to_claim": to_claim}) # TODO: Remove this line once migrated
+                                                                                  # other code to use public firestore
+        return to_claim
+
+    raise HTTPException(status_code=402)
+
+
+# TODO: Make this transactional!
 async def update_estimated_cost_with_exact(
     claim, single_request_cost_estimate: int, single_request_exact_cost: int, db
 ) -> float:
@@ -193,7 +235,7 @@ async def update_estimated_cost_with_exact(
     except ValueError as e:
         raise HTTPException(
             status_code=402,
-            detail="You must provide a payment channel claim that can be parsed via json.loads",
+            detail=f"You must provide a payment channel claim that can be parsed via json.loads. Error: {e}.",
         )
 
     if (
@@ -206,21 +248,20 @@ async def update_estimated_cost_with_exact(
         )
 
     uuid_channel_id = str(uuid.uuid5(uuid.NAMESPACE_URL, parsed_claim["channel_id"]))
-    collection_name = "payment_channels"
+    public_collection_name = "payment_channels"
+    private_collection_name = "public_claim_info"
 
-    payment_claim_doc_ref = db.collection(collection_name).document(uuid_channel_id)
-    payment_claim_doc = payment_claim_doc_ref.get()
+    public_payment_claim_doc_ref = db.collection(public_collection_name).document(uuid_channel_id)
+    private_payment_claim_doc_ref = db.collection(private_collection_name).document(uuid_channel_id)
+    
+    transaction = db.transaction()
+    to_claim = _transactional_update_estimated_cost_with_exact(transaction, 
+                                                           public_payment_claim_doc_ref, 
+                                                           private_payment_claim_doc_ref, 
+                                                           single_request_cost_estimate, 
+                                                           single_request_exact_cost)
+    return to_claim
 
-    if payment_claim_doc.exists:
-        to_claim = (
-            payment_claim_doc.to_dict()["to_claim"]
-            - single_request_cost_estimate
-            + single_request_exact_cost
-        )
-        payment_claim_doc_ref.update({"to_claim": to_claim})
-        return to_claim
-    else:
-        raise HTTPException(status_code=402)
 
 
 # TODO - Test this!
@@ -286,16 +327,21 @@ async def validate_claim(
 
 
     uuid_channel_id = str(uuid.uuid5(uuid.NAMESPACE_URL, parsed_claim["channel_id"]))
-    collection_name = "payment_channels"
+    private_collection_name = "payment_channels"
+    public_collection_name = "public_claim_info"
 
     transaction = db.transaction()
-    payment_claim_doc_ref = db.collection(collection_name).document(uuid_channel_id)
-    to_claim = transactional_validation(
+    public_payment_claim_doc_ref = db.collection(public_collection_name).document(uuid_channel_id)
+    private_payment_claim_doc_ref = db.collection(private_collection_name).document(uuid_channel_id)
+
+    to_claim = _transactional_validation(
         transaction,
-        payment_claim_doc_ref,
+        public_payment_claim_doc_ref,
+        private_payment_claim_doc_ref,
         ledger_client=client,
         parsed_claim=parsed_claim,
         single_request_cost_estimate=single_request_cost_estimate,
         settle_delay=settle_delay,
     )
+
     return to_claim

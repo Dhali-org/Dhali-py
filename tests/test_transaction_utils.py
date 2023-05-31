@@ -1,11 +1,15 @@
+from unittest import mock
+import mockfirestore
+import mockito
 import pytest
+import uuid
+import json
 
 import dhali.transaction_utils as dtx
 
 __author__ = "Dhali-org"
 __copyright__ = "Dhali-org"
 __license__ = "MIT"
-
 
 def test_rate_converters_dollars_to_xrp():
     """Test Dollar to XRP converter"""
@@ -32,3 +36,40 @@ def test_determine_cost_dollars():
         dtx.determine_cost_dollars(machine_type = "TODO", runtime_ms = 20, request_size_bytes = -2, response_size_bytes = 3)
     with pytest.raises(ValueError):
         dtx.determine_cost_dollars(machine_type = "TODO", runtime_ms = 20, request_size_bytes = 2, response_size_bytes = -3)
+
+@pytest.mark.asyncio
+async def test_to_claim_in_sync():
+    """Test to make sure that `to_claim` is kept in sync across firestore databases"""
+
+    claim = {"account": "some_valid_account", "destination_account": "some_other_valid_account", "authorized_to_claim": "9001", "signature": "some_valid_signature", "channel_id": "some_valid_channel_id"}
+
+    db = mockito.spy(mockfirestore.MockFirestore())
+
+    public_collection_name = "payment_channels"
+    private_collection_name = "public_claim_info"
+
+    uuid_channel_id = str(uuid.uuid5(uuid.NAMESPACE_URL, claim["channel_id"]))
+
+    private_payment_claim_doc_ref = db.collection(private_collection_name).document(uuid_channel_id)
+    public_payment_claim_doc_ref = db.collection(public_collection_name).document(uuid_channel_id)
+
+    private_payment_claim_doc_ref.set({
+        "authorized_to_claim": claim["authorized_to_claim"],
+        "currency": {"code": "XRP", "scale": 0.000001},
+        "to_claim": 5,
+        "payment_claim": json.dumps(claim),
+    })
+    public_payment_claim_doc_ref.set({
+        "to_claim": 5,
+        "currency": {"code": "XRP", "scale": 0.000001},
+    })
+
+    the_expected_to_claim = await dtx.update_estimated_cost_with_exact(
+        claim=json.dumps(claim),
+        single_request_cost_estimate=5,
+        single_request_exact_cost=20,
+        db=db,
+    )
+
+    assert db.collection(public_collection_name).document(uuid_channel_id).get().to_dict()["to_claim"] == the_expected_to_claim, "Document not updated correctly in firestore"
+    assert db.collection(private_collection_name).document(uuid_channel_id).get().to_dict()["to_claim"] == the_expected_to_claim, "Document not updated correctly in firestore"
