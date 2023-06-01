@@ -50,7 +50,15 @@ def _transactional_validation(
         validate(parsed_claim=parsed_claim, ledger_client=ledger_client, settle_delay=settle_delay)
 
     if private_payment_channels_doc.exists:
-        transaction.update(private_doc_ref, {"to_claim": to_claim})
+        transaction.update(
+            private_doc_ref,
+            {
+                "authorized_to_claim": parsed_claim["authorized_to_claim"],
+                "to_claim": to_claim, # TODO: Remove this once other infra migrated to use public firestore
+                "currency": {"code": "XRP", "scale": 0.000001},
+                "payment_claim": json.dumps(parsed_claim),
+            },
+        )
     else:
         # The expectations are:
         # authorized_to_claim >= to_claim
