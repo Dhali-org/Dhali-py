@@ -28,6 +28,9 @@ def get_xrpl_payment_claim(source_wallet_secret: str, destination_classic_addres
     last_ledger_sequence = xrpl.ledger.get_latest_validated_ledger_sequence(client) + 10
     fee = xrpl.ledger.get_fee(client=client, fee_type="dynamic")
 
+    # TODO: We do not want to be creating a new payment channel each time this function is called.
+    # Let's instead give the payment channel as an argument to the function.  We can also validate that only
+    # one payment channel is open between the source classic address and Dhali somewhere else in this library.
     payment_channel = PaymentChannelCreate(
         account=source_wallet.classic_address,
         amount=total_xrp_in_channel,
