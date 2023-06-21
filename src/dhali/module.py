@@ -11,9 +11,8 @@ class Module:
     An interface to modules that are available in the Dhali marketplace.
     """
 
-    def __init__(self, asset_uuid: str, xrpl_wallet: wallet):
+    def __init__(self, asset_uuid: str):
         self.asset_uuid = asset_uuid
-        self.xrpl_wallet = xrpl_wallet
         self.url = f"https://dhali-prod-run-dauenf0n.uc.gateway.dev/{asset_uuid}/run"
 
     def run(

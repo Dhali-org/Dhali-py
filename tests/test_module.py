@@ -29,7 +29,6 @@ class TestModule(unittest.TestCase):
 
     def setUp(self):
         self.some_asset_uuid = "some_asset_uuid"
-        self.some_wallet = MagicMock()
         self.payment_claim = {
             "account": "some_account",
             "destination_account": "some_other_account",
@@ -38,7 +37,7 @@ class TestModule(unittest.TestCase):
             "channel_id": "some_channel_id",
         }
         self.some_url = "https://dhali.io"
-        self.test_module = Module(self.some_asset_uuid, self.some_wallet)
+        self.test_module = Module(self.some_asset_uuid)
 
     @patch.object(requests, "put")
     def test_success_with_valid_file(self, mock_put):
