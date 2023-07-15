@@ -248,8 +248,8 @@ async def update_estimated_cost_with_exact(
 
     if (
         "channel_id" not in parsed_claim.keys()
-        or single_request_exact_cost <= 0
-        or single_request_cost_estimate <= 0
+        or single_request_exact_cost < 0
+        or single_request_cost_estimate < 0
     ):
         raise HTTPException(
             status_code=402,
