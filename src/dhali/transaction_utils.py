@@ -3,6 +3,14 @@ import xrpl
 import uuid
 from fastapi import HTTPException
 from google.cloud import firestore
+import logging
+
+root_private_collection_name = "payment_channels"
+root_public_collection_name = "public_claim_info"
+estimate_collection_name = "estimate"
+exact_collection_name = "exact"
+request_charge_header_key = "Dhali-Latest-Request-Charge"
+request_total_charge_header_key = "Dhali-Total-Requests-Charge"
 
 @firestore.transactional
 def _transactional_validation(
@@ -87,6 +95,66 @@ def _transactional_validation(
 
     return to_claim
 
+
+def _validation(
+    db,
+    root_private_payment_claim_doc_ref,
+    ledger_client,
+    parsed_claim,
+    single_request_cost_estimate: int,
+    settle_delay,
+) -> float:
+    
+    root_private_payment_claim_doc = root_private_payment_claim_doc_ref.get()
+
+    updating_payment_claim = True
+    if root_private_payment_claim_doc.exists and not root_private_payment_claim_doc.to_dict():
+        # Check if payment claim was previously submitted. If so, we do not need
+        # to cryptographically verify it again 
+        updating_payment_claim = json.loads(root_private_payment_claim_doc.to_dict()["payment_claim"]) != parsed_claim
+        if root_private_payment_claim_doc.to_dict()["currency"]["code"] != "XRP":
+            raise HTTPException(
+                status_code=402,
+                detail="Your stored payment channel's currency code is invalid",
+            )
+        if root_private_payment_claim_doc.to_dict()["currency"]["scale"] != 0.000001:
+            raise HTTPException(
+                status_code=402,
+                detail="Your stored payment channel's currency scale is invalid",
+            )
+
+        to_claim = (
+            root_private_payment_claim_doc.to_dict()["to_claim"] + single_request_cost_estimate
+        )
+    else:
+        to_claim = single_request_cost_estimate
+
+    authorized_to_claim = parsed_claim["authorized_to_claim"]
+    if int(authorized_to_claim) < int(to_claim):
+        raise HTTPException(
+            status_code=402,
+            detail=f"Your payment claim is not sufficient to fund this request: authorized_to_claim = {authorized_to_claim}, to_claim = {to_claim}",
+        )
+
+    if updating_payment_claim:
+        validate(parsed_claim=parsed_claim, ledger_client=ledger_client, settle_delay=settle_delay)
+
+    uuid_estimate = str(uuid.uuid4())
+    estimated_payment_claim_doc_ref = db.collection(root_private_collection_name).document(root_private_payment_claim_doc.id).collection(estimate_collection_name).document(uuid_estimate)
+    estimated_payment_claim_doc_ref.set(
+        {
+            "authorized_to_claim": parsed_claim["authorized_to_claim"],
+            "to_claim": single_request_cost_estimate, # TODO: Remove this once other infra migrated to use public firestore
+            "currency": {"code": "XRP", "scale": 0.000001},
+            "payment_claim": json.dumps(parsed_claim),
+        },
+    )
+    return uuid_estimate
+
+
+
+
+
 def validate(parsed_claim, ledger_client, settle_delay):
 
     account_channels = xrpl.models.requests.AccountChannels(
@@ -102,7 +170,6 @@ def validate(parsed_claim, ledger_client, settle_delay):
             status_code=402,
             detail=f"There were no valid claims found for the specified channel",
         )
-
     for channel in account_channels_response.to_dict()["result"]["channels"]:
         correct_del = channel["settle_delay"] == settle_delay
         correct_src = channel["account"] == parsed_claim["account"]
@@ -146,8 +213,6 @@ def validate(parsed_claim, ledger_client, settle_delay):
             status_code=402, detail=f"Your signature could not be verified"
         )
 
-request_charge_header_key = "Dhali-Latest-Request-Charge"
-request_total_charge_header_key = "Dhali-Total-Requests-Charge"
 
 
 def convert_dollars_to_xrp(dollars: float):
@@ -272,8 +337,151 @@ async def update_estimated_cost_with_exact(
 
 
 
-# TODO - Test this!
+
+async def validate_exact_claim(
+    claim, estimated_claim_uuid: str, single_request_exact_cost: int, db
+) -> float:
+    """
+    Parameters
+    ----------
+    claim : str
+    estimated_claim_uuid : str
+    single_request_exact_cost : int
+    db: firestore.Client
+
+    :raises:
+        HTTPException: 402 status code HTTPException
+    :raises:
+        HTTPException: 500 status code HTTPException
+    Returns
+    -------
+    void
+    """
+    try:
+        parsed_claim = json.loads(claim)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=402,
+            detail=f"You must provide a payment channel claim that can be parsed via json.loads. Error: {e}.",
+        )
+    
+    uuid_channel_id = str(uuid.uuid5(uuid.NAMESPACE_URL, parsed_claim["channel_id"]))
+    estimated_payment_claim_doc_ref = db.collection(root_private_collection_name).document(uuid_channel_id).collection(estimate_collection_name).document(estimated_claim_uuid)
+    exact_payment_claim_doc_ref = db.collection(root_private_collection_name).document(uuid_channel_id).collection(exact_collection_name).document(estimated_claim_uuid)
+    estimated_payment_claim_doc = estimated_payment_claim_doc_ref.get()
+
+    if estimated_payment_claim_doc.get("authorized_to_claim") != parsed_claim["authorized_to_claim"]:
+        logging.error(f'Error: {estimated_payment_claim_doc.get("authorized_to_claim")} != {parsed_claim["authorized_to_claim"]}')
+        raise HTTPException(
+            status_code=500,
+        )
+    
+    if estimated_payment_claim_doc.get("payment_claim") != claim:
+        logging.error(f'Error: {estimated_payment_claim_doc.get("payment_claim")} != {claim}')
+        raise HTTPException(
+            status_code=500,
+        )
+    
+    if estimated_payment_claim_doc.exists:
+        exact_payment_claim_doc_ref.set(
+            {
+                "authorized_to_claim": parsed_claim["authorized_to_claim"],
+                "to_claim": single_request_exact_cost,
+                "currency": {"code": "XRP", "scale": 0.000001},
+                "payment_claim": json.dumps(parsed_claim),
+            },
+        )
+    else:
+        logging.error(f'Error: The estimated claim document could not be found')
+        raise HTTPException(
+            status_code=500, detail="An unknown error occured."
+        )
+
+
+
 async def validate_claim(
+    client, claim, single_request_cost_estimate: int, db, destination_account: str, settle_delay=15768000
+):
+    """
+    Parameters
+    ----------
+    client : xrpl.clients.JsonRpcClient
+        Client used to verify cryptographic claimd
+    claim : str
+        The claim to be verified
+    single_request_cost_estimate : int
+        The single_request_cost_estimate to be claimed from the channel.
+        This function will take 'single_request_cost_estimate' and add it to our record of
+        other costs that dhali has against the channel. 'claim' should be
+        able to support all previous claims dhali has, plus single_request_cost_estimate
+    settle_delay : int
+        The amount of time (seconds) that must elapse after requesting a payment channel to close
+        before it actually closes. Defaults to 6 month
+
+    :raises:
+        HTTPException: 402 status code HTTPException is raised if claim is invalid
+    :raises:
+        HTTPException: 500 status code HTTPException is raised if error occurs
+    Returns
+    -------
+    void
+    """
+    try:
+        parsed_claim = json.loads(claim)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=402,
+            detail="You must provide a payment channel claim that can be parsed via json.loads",
+        )
+
+    # The following keys must be present in the Json request claim. These are defined here:
+    # https://xrpl.org/account_channels.html
+
+    keys = [
+        "account",
+        "destination_account",
+        "signature",
+        "channel_id",
+        "authorized_to_claim",
+    ]
+
+    for key in keys:
+        if key not in parsed_claim.keys():
+            raise HTTPException(
+                status_code=402,
+                detail=f"Your claim must be in Json format, providing the following fields: {keys}",
+            )
+
+    if destination_account != parsed_claim["destination_account"]:
+        raise HTTPException(
+            status_code=402,
+            detail=f"Your claim has an incorrect destination_account",
+        )
+
+
+    uuid_channel_id = str(uuid.uuid5(uuid.NAMESPACE_URL, parsed_claim["channel_id"]))
+    private_collection_name = "payment_channels"
+    public_collection_name = "public_claim_info"
+
+    transaction = db.transaction()
+    public_payment_claim_doc_ref = db.collection(public_collection_name).document(uuid_channel_id)
+    private_payment_claim_doc_ref = db.collection(private_collection_name).document(uuid_channel_id)
+
+    to_claim = _transactional_validation(
+        transaction,
+        public_payment_claim_doc_ref,
+        private_payment_claim_doc_ref,
+        ledger_client=client,
+        parsed_claim=parsed_claim,
+        single_request_cost_estimate=single_request_cost_estimate,
+        settle_delay=settle_delay,
+    )
+
+    return to_claim
+
+
+
+async def validate_estimated_claim(
     client, claim, single_request_cost_estimate: int, db, destination_account: str, settle_delay=15768000
 ):
     """
@@ -333,23 +541,17 @@ async def validate_claim(
             detail=f"Your claim has an incorrect destination_account",
         )
 
-
     uuid_channel_id = str(uuid.uuid5(uuid.NAMESPACE_URL, parsed_claim["channel_id"]))
-    private_collection_name = "payment_channels"
-    public_collection_name = "public_claim_info"
 
-    transaction = db.transaction()
-    public_payment_claim_doc_ref = db.collection(public_collection_name).document(uuid_channel_id)
-    private_payment_claim_doc_ref = db.collection(private_collection_name).document(uuid_channel_id)
-
-    to_claim = _transactional_validation(
-        transaction,
-        public_payment_claim_doc_ref,
-        private_payment_claim_doc_ref,
+    root_private_payment_claim_doc_ref = db.collection(root_private_collection_name).document(uuid_channel_id)
+    
+    uuid_estimate = _validation(
+        db=db,
+        root_private_payment_claim_doc_ref=root_private_payment_claim_doc_ref,
         ledger_client=client,
         parsed_claim=parsed_claim,
         single_request_cost_estimate=single_request_cost_estimate,
         settle_delay=settle_delay,
     )
 
-    return to_claim
+    return uuid_estimate
