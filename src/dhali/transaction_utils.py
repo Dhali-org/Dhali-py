@@ -555,3 +555,22 @@ async def validate_estimated_claim(
     )
 
     return uuid_estimate
+
+@firestore.transactional
+def move_document_in_transaction(transaction, source_ref, target_ref):
+    try:
+        source_doc = next(transaction.get(source_ref))
+        if source_doc.exists:
+            data = source_doc.to_dict()
+            transaction.set(target_ref, data)
+            transaction.delete(source_ref)
+        else:
+            return
+    except KeyError as e:
+        # Assume that source_ref has been removed or never existed in the first place
+        logging.info(f'Source document does not exist: {e}')
+        return
+
+def move_document(db, source_ref, destination_ref):
+    transaction = db.transaction()
+    move_document_in_transaction(transaction, source_ref, destination_ref)

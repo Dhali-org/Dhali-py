@@ -1,3 +1,4 @@
+import asyncio
 from unittest import mock
 import mockfirestore
 import mockito
@@ -361,3 +362,35 @@ async def test_payment_claim_estimate_and_exact():
     assert db.collection(private_collection_name).document(uuid_channel_id).collection(exact_collection_name).document(estimate_uuid_2).get().to_dict()["authorized_to_claim"] == f"{new_authorized_amount_2}", "authorized_to_claim not updated correctly in firestore"
     assert db.collection(private_collection_name).document(uuid_channel_id).collection(exact_collection_name).document(estimate_uuid_2).get().to_dict()["payment_claim"] == json.dumps(updated_claim_2), "payment_claim not updated correctly in firestore"
     assert db.collection(private_collection_name).document(uuid_channel_id).collection(exact_collection_name).document(estimate_uuid_2).get().to_dict()["to_claim"] == 3, "to_claim not updated correctly in firestore"
+
+@pytest.mark.asyncio
+async def test_concurrent_move_document():
+    source_collection_name = 'sourceCollection'
+    target_collection_name = 'targetCollection'
+    document_id = 'myDoc'
+    concurrent_requests = 100
+
+    # Initialize a spy Firestore client
+    db = mockito.spy(mockfirestore.MockFirestore())
+
+
+    source_ref = db.collection(source_collection_name).document(document_id)
+    source_ref.set({'field': 'value'})
+
+    async def move_document_coroutine(idx):
+        target_ref = db.collection(target_collection_name).document(document_id + str(idx))
+        
+        await asyncio.sleep(0)  # Yield control to the event loop
+        dtx.move_document(db, source_ref, target_ref)
+
+    # Run move_document concurrently in `concurrent_requests` coroutines
+    await asyncio.gather(*(move_document_coroutine(idx) for idx in range(concurrent_requests)))
+
+    assert not db.collection(source_collection_name).document(document_id).get().exists, "Document still exists in source collection!"
+    
+    target_docs = [db.collection(target_collection_name).document(document_id + str(idx)).get().exists == True for idx in range(concurrent_requests)]
+    assert sum(target_docs) == 1, "More than one document found in the target collection!"
+
+    for idx in range(concurrent_requests):
+        # Clean up: Delete the moved document from the target collection after the test
+        db.collection(target_collection_name).document(document_id + str(idx)).delete()
