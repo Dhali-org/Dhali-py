@@ -394,3 +394,98 @@ async def test_concurrent_move_document():
     for idx in range(concurrent_requests):
         # Clean up: Delete the moved document from the target collection after the test
         db.collection(target_collection_name).document(document_id + str(idx)).delete()
+
+@pytest.mark.asyncio
+async def test_concurrent_consolidate_documents():
+    source_collection_name = 'sourceCollection'
+    target_collection_name = 'targetCollection'
+    document_id = 'myDoc'
+    db = mockito.spy(mockfirestore.MockFirestore())
+    concurrent_requests = 100
+    
+    async def consolidate_documents_coroutine(idx, source_refs):
+        target_ref = db.collection(target_collection_name).document(idx)
+        await asyncio.sleep(0)  # Yield control to the event loop
+        dtx.consolidate_payment_claim_documents(db, source_refs, target_ref)
+
+    def prepare_source_database(unconsolidated_claim_data):
+        for idx, data in enumerate(unconsolidated_claim_data):
+            db.collection(source_collection_name).document(document_id + str(idx)).set(data)
+
+        source_refs = []
+        for doc_ref in db.collection(source_collection_name).stream():
+            source_refs.append(doc_ref.reference)
+        return source_refs
+
+    #####################
+    # First consolidation
+    #####################
+    unconsolidated_claim_data = [{
+                    "authorized_to_claim": 4,
+                    "to_claim": 1,
+                    "payment_claim": "sig1",
+                },
+                {
+                    "authorized_to_claim": 5,
+                    "to_claim": 2,
+                    "payment_claim": "sig2",
+                },
+                {
+                    "authorized_to_claim": 6,
+                    "to_claim": 3,
+                    "payment_claim": "largest signatire",
+                }]
+
+    source_refs = prepare_source_database(unconsolidated_claim_data) 
+
+    # Run consolidate_payment_claim_documents concurrently in coroutines
+    await asyncio.gather(*(consolidate_documents_coroutine(document_id + str(idx), source_refs) for idx in range(concurrent_requests)))
+    
+    target_docs = []
+    idx_inserted_at = 0
+    for idx in range(concurrent_requests):
+        if db.collection(target_collection_name).document(document_id + str(idx)).get().exists == True:
+            idx_inserted_at = idx
+            target_docs.append(db.collection(target_collection_name).document(document_id + str(idx)).get().to_dict())
+    for doc_ref in source_refs:
+        with pytest.raises(KeyError):
+            assert not doc_ref.get().exists, "At least one source document was not deleted!"
+    assert len(target_docs) == 1, "More than one document found in the target collection!"
+    assert target_docs[0]["authorized_to_claim"] == 6, "Authorised to claim is incorrect"
+    assert target_docs[0]["to_claim"] == 6, "To claim should be the sum of all claims"
+    assert target_docs[0]["payment_claim"] == "largest signatire", "The payment claim should correspond to authorized_to_claim"
+
+    ######################
+    # Second consolidation
+    ######################
+    unconsolidated_claim_data = [{
+                    "authorized_to_claim": 8,
+                    "to_claim": 1,
+                    "payment_claim": "sig3",
+                },
+                {
+                    "authorized_to_claim": 9,
+                    "to_claim": 2,
+                    "payment_claim": "sig4",
+                },
+                {
+                    "authorized_to_claim": 9.1,
+                    "to_claim": 1.1,
+                    "payment_claim": "new largest signatire",
+                }]
+
+    source_refs = prepare_source_database(unconsolidated_claim_data)  
+
+    await asyncio.gather(*(consolidate_documents_coroutine(document_id + str(idx_inserted_at), source_refs) for _ in range(concurrent_requests)))
+
+    target_docs = []
+    for idx in range(concurrent_requests):
+        if db.collection(target_collection_name).document(document_id + str(idx)).get().exists == True:
+            target_docs.append(db.collection(target_collection_name).document(document_id + str(idx)).get().to_dict())
+    for doc_ref in source_refs:
+        with pytest.raises(KeyError):
+            assert not doc_ref.get().exists, "At least one source document was not deleted!"
+    assert len(target_docs) == 1, "More than one document found in the target collection!"
+    assert target_docs[0]["authorized_to_claim"] == 9.1, "Authorised to claim is incorrect"
+    assert target_docs[0]["to_claim"] == 10.1, "To claim should be the sum of all claims"
+    assert target_docs[0]["payment_claim"] == "new largest signatire", "The payment claim should correspond to authorized_to_claim"
