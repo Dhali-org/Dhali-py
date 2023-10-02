@@ -408,7 +408,7 @@ async def test_concurrent_consolidate_documents():
         await asyncio.sleep(0)  # Yield control to the event loop
         dtx.consolidate_payment_claim_documents(db, source_refs, target_ref)
 
-    def prepare_source_database(unconsolidated_claim_data):
+    def prepare_source_collection(unconsolidated_claim_data):
         for idx, data in enumerate(unconsolidated_claim_data):
             db.collection(source_collection_name).document(document_id + str(idx)).set(data)
 
@@ -436,7 +436,7 @@ async def test_concurrent_consolidate_documents():
                     "payment_claim": "largest signatire",
                 }]
 
-    source_refs = prepare_source_database(unconsolidated_claim_data) 
+    source_refs = prepare_source_collection(unconsolidated_claim_data) 
 
     # Run consolidate_payment_claim_documents concurrently in coroutines
     await asyncio.gather(*(consolidate_documents_coroutine(document_id + str(idx), source_refs) for idx in range(concurrent_requests)))
@@ -474,7 +474,7 @@ async def test_concurrent_consolidate_documents():
                     "payment_claim": "new largest signatire",
                 }]
 
-    source_refs = prepare_source_database(unconsolidated_claim_data)  
+    source_refs = prepare_source_collection(unconsolidated_claim_data)  
 
     await asyncio.gather(*(consolidate_documents_coroutine(document_id + str(idx_inserted_at), source_refs) for _ in range(concurrent_requests)))
 

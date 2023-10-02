@@ -1,3 +1,4 @@
+import datetime
 import json
 import xrpl
 import uuid
@@ -143,6 +144,7 @@ def _validation(
     estimated_payment_claim_doc_ref = db.collection(root_private_collection_name).document(root_private_payment_claim_doc.id).collection(estimate_collection_name).document(uuid_estimate)
     estimated_payment_claim_doc_ref.set(
         {
+            "timestamp": datetime.datetime.utcnow(),
             "authorized_to_claim": parsed_claim["authorized_to_claim"],
             "to_claim": single_request_cost_estimate, # TODO: Remove this once other infra migrated to use public firestore
             "currency": {"code": "XRP", "scale": 0.000001},
@@ -385,6 +387,7 @@ async def validate_exact_claim(
     if estimated_payment_claim_doc.exists:
         exact_payment_claim_doc_ref.set(
             {
+                "timestamp": estimated_payment_claim_doc.get("timestamp"),
                 "authorized_to_claim": parsed_claim["authorized_to_claim"],
                 "to_claim": single_request_exact_cost,
                 "currency": {"code": "XRP", "scale": 0.000001},
@@ -575,7 +578,7 @@ def move_document(db, source_ref, destination_ref):
     try:
         _move_document_in_transaction(transaction, source_ref, destination_ref)
     except KeyError as e:
-        logging.info(f'Expected KeyError: {e}')
+        logging.info(f'Document has already been moved, skipping... {e}')
         return
 
 
