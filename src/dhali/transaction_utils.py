@@ -378,7 +378,7 @@ async def validate_exact_claim(
             status_code=500,
         )
     
-    if estimated_payment_claim_doc.get("payment_claim") != claim:
+    if estimated_payment_claim_doc.get("payment_claim").strip(" ") != claim.strip(" "):
         logging.error(f'Error: {estimated_payment_claim_doc.get("payment_claim")} != {claim}')
         raise HTTPException(
             status_code=500,
