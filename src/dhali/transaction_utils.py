@@ -385,13 +385,10 @@ async def validate_exact_claim(
         )
     
     if estimated_payment_claim_doc.exists:
-        exact_payment_claim_doc_ref.set(
+        move_document(db, estimated_payment_claim_doc_ref, exact_payment_claim_doc_ref)
+        exact_payment_claim_doc_ref.update(
             {
-                "timestamp": estimated_payment_claim_doc.get("timestamp"),
-                "authorized_to_claim": parsed_claim["authorized_to_claim"],
-                "to_claim": single_request_exact_cost,
-                "currency": {"code": "XRP", "scale": 0.000001},
-                "payment_claim": json.dumps(parsed_claim),
+                "to_claim": single_request_exact_cost
             },
         )
     else:

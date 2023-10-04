@@ -319,15 +319,15 @@ async def test_payment_claim_estimate_and_exact():
         destination_account=some_other_valid_account
     )
     
-    def test_estimate():
+    def test_estimate(estimate_uuid, new_authorized_amount, updated_claim, to_claim):
         assert db.collection(private_collection_name).document(uuid_channel_id).collection(estimates_collection_name).document(estimate_uuid).get().to_dict()["authorized_to_claim"] == f"{new_authorized_amount}", "authorized_to_claim not updated correctly in firestore"
         assert db.collection(private_collection_name).document(uuid_channel_id).collection(estimates_collection_name).document(estimate_uuid).get().to_dict()["payment_claim"] == json.dumps(updated_claim), "payment_claim not updated correctly in firestore"
-        assert db.collection(private_collection_name).document(uuid_channel_id).collection(estimates_collection_name).document(estimate_uuid).get().to_dict()["to_claim"] == 5, "to_claim not updated correctly in firestore"
+        assert db.collection(private_collection_name).document(uuid_channel_id).collection(estimates_collection_name).document(estimate_uuid).get().to_dict()["to_claim"] == to_claim, "to_claim not updated correctly in firestore"
     
     # Ensure the root is untampered
     test_root(["estimate"])
     # Ensure the estimate is created
-    test_estimate()
+    test_estimate(estimate_uuid, new_authorized_amount, updated_claim, 5)
 
     estimate_uuid_2 = await dtx.validate_estimated_claim(
         client=mock_xrpl_json_rpc,
@@ -337,27 +337,23 @@ async def test_payment_claim_estimate_and_exact():
         destination_account=some_other_valid_account
     )
 
-    def test_estimate_2():
-        assert estimate_uuid_2 != None, "The estimated uuid should not be None because the second estimate always gets placed in the estimates collection"
-        assert db.collection(private_collection_name).document(uuid_channel_id).collection(estimates_collection_name).document(estimate_uuid_2).get().to_dict()["authorized_to_claim"] == f"{new_authorized_amount_2}", "authorized_to_claim not updated correctly in firestore"
-        assert db.collection(private_collection_name).document(uuid_channel_id).collection(estimates_collection_name).document(estimate_uuid_2).get().to_dict()["payment_claim"] == json.dumps(updated_claim_2), "payment_claim not updated correctly in firestore"
-        assert db.collection(private_collection_name).document(uuid_channel_id).collection(estimates_collection_name).document(estimate_uuid_2).get().to_dict()["to_claim"] == 6, "to_claim not updated correctly in firestore"
-    
+    assert estimate_uuid_2 != None, "The estimated uuid should not be None because the second estimate always gets placed in the estimates collection"
+
     # Ensure the root is untampered
     test_root(["estimate"])
     # Ensure old estimate is untampered
-    test_estimate()
+    test_estimate(estimate_uuid, new_authorized_amount, updated_claim, 5)
     # Ensure the new estimate is created
-    test_estimate_2()
+    test_estimate(estimate_uuid_2, new_authorized_amount_2, updated_claim_2, 6)
     
     _ = await dtx.validate_exact_claim(json.dumps(updated_claim_2), estimate_uuid_2, 3, db)
 
     # Ensure the root is untampered
     test_root(["estimate", "exact"])
     # Ensure old estimate is untampered
-    test_estimate()
-    # Ensure the new estimate is created
-    test_estimate_2()
+    test_estimate(estimate_uuid, new_authorized_amount, updated_claim, 5)
+    # Ensure the new estimate is removed
+    assert not db.collection(private_collection_name).document(uuid_channel_id).collection(estimates_collection_name).document(estimate_uuid_2).get().exists
     # Ensure the new exact is created
     assert db.collection(private_collection_name).document(uuid_channel_id).collection(exact_collection_name).document(estimate_uuid_2).get().to_dict()["authorized_to_claim"] == f"{new_authorized_amount_2}", "authorized_to_claim not updated correctly in firestore"
     assert db.collection(private_collection_name).document(uuid_channel_id).collection(exact_collection_name).document(estimate_uuid_2).get().to_dict()["payment_claim"] == json.dumps(updated_claim_2), "payment_claim not updated correctly in firestore"
