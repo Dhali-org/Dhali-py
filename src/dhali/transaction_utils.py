@@ -385,13 +385,10 @@ async def validate_exact_claim(
         )
     
     if estimated_payment_claim_doc.exists:
-        exact_payment_claim_doc_ref.set(
+        move_document(db, estimated_payment_claim_doc_ref, exact_payment_claim_doc_ref)
+        exact_payment_claim_doc_ref.update(
             {
-                "timestamp": estimated_payment_claim_doc.get("timestamp"),
-                "authorized_to_claim": parsed_claim["authorized_to_claim"],
-                "to_claim": single_request_exact_cost,
-                "currency": {"code": "XRP", "scale": 0.000001},
-                "payment_claim": json.dumps(parsed_claim),
+                "to_claim": single_request_exact_cost
             },
         )
     else:
@@ -586,7 +583,7 @@ def move_document(db, source_ref, destination_ref):
 def _consolidate_payment_claim_documents_in_transaction(transaction, source_refs, target_ref):
     try:
         total_to_claim = 0
-        max_authorized_to_claim = 0
+        max_authorized_to_claim = "0"
         max_payment_claim = ""
 
         target_doc = next(transaction.get(target_ref))
@@ -602,7 +599,7 @@ def _consolidate_payment_claim_documents_in_transaction(transaction, source_refs
                 
                 total_to_claim += source_doc.to_dict()["to_claim"]
                 
-                if source_doc.to_dict()["authorized_to_claim"] > max_authorized_to_claim:
+                if int(source_doc.to_dict()["authorized_to_claim"]) > int(max_authorized_to_claim):
                     max_authorized_to_claim = source_doc.to_dict()["authorized_to_claim"]
                     max_payment_claim = source_doc.to_dict()["payment_claim"]
 
@@ -610,7 +607,7 @@ def _consolidate_payment_claim_documents_in_transaction(transaction, source_refs
                 print(f'Source document does not exist')
                 return
         data = {
-                    "authorized_to_claim": max_authorized_to_claim,
+                    "authorized_to_claim": str(max_authorized_to_claim),
                     "to_claim": total_to_claim,
                     "payment_claim": max_payment_claim,
                     "currency": {"code": "XRP", "scale": 0.000001},
