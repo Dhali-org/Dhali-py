@@ -586,35 +586,33 @@ def _consolidate_payment_claim_documents_in_transaction(transaction, source_refs
         max_authorized_to_claim = "0"
         max_payment_claim = ""
 
-        target_doc = next(transaction.get(target_ref))
+        # Read all documents in a single batch
+        all_docs = transaction.get([target_ref] + source_refs)
+
+        target_doc = next(all_docs)
         if target_doc.exists and 'payment_claim' in target_doc.to_dict():
-            total_to_claim = target_doc.to_dict()["to_claim"]
-            max_authorized_to_claim = target_doc.to_dict()["authorized_to_claim"]
-            max_payment_claim = target_doc.to_dict()["payment_claim"]
-        
-        # Step 1: Collect necessary data from source_refs
-        source_docs_data = []
-        for source_ref in source_refs:
-            source_doc = next(transaction.get(source_ref))
+            target_data = target_doc.to_dict()
+            total_to_claim = target_data.get("to_claim", 0)
+            max_authorized_to_claim = target_data.get("authorized_to_claim", "0")
+            max_payment_claim = target_data.get("payment_claim", "")
+
+        # Step 1: Process the collected data from source_refs
+        for source_doc in all_docs:
             if source_doc.exists:
                 doc_data = source_doc.to_dict()
-                source_docs_data.append(doc_data)
+                total_to_claim += doc_data["to_claim"]
+                if int(doc_data["authorized_to_claim"]) > int(max_authorized_to_claim):
+                    max_authorized_to_claim = doc_data["authorized_to_claim"]
+                    max_payment_claim = doc_data["payment_claim"]
             else:
-                print(f'Source document does not exist')
+                logging.info('Source document does not exist')
                 return
 
-        # Step 2: Process the collected data
-        for data in source_docs_data:
-            total_to_claim += data["to_claim"]
-            if int(data["authorized_to_claim"]) > int(max_authorized_to_claim):
-                max_authorized_to_claim = data["authorized_to_claim"]
-                max_payment_claim = data["payment_claim"]
-
-        # Step 3: Perform writes - delete the source docs
+        # Step 2: Perform writes - delete the source docs
         for source_ref in source_refs:
             transaction.delete(source_ref)
 
-        # Step 4: Update the target doc
+        # Step 3: Update the target doc
         data = {
             "authorized_to_claim": str(max_authorized_to_claim),
             "to_claim": total_to_claim,
