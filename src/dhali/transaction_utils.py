@@ -591,27 +591,36 @@ def _consolidate_payment_claim_documents_in_transaction(transaction, source_refs
             total_to_claim = target_doc.to_dict()["to_claim"]
             max_authorized_to_claim = target_doc.to_dict()["authorized_to_claim"]
             max_payment_claim = target_doc.to_dict()["payment_claim"]
-            
+        
+        # Step 1: Collect necessary data from source_refs
+        source_docs_data = []
         for source_ref in source_refs:
             source_doc = next(transaction.get(source_ref))
-            transaction.delete(source_ref)
             if source_doc.exists:
-                
-                total_to_claim += source_doc.to_dict()["to_claim"]
-                
-                if int(source_doc.to_dict()["authorized_to_claim"]) > int(max_authorized_to_claim):
-                    max_authorized_to_claim = source_doc.to_dict()["authorized_to_claim"]
-                    max_payment_claim = source_doc.to_dict()["payment_claim"]
-
+                doc_data = source_doc.to_dict()
+                source_docs_data.append(doc_data)
             else:
                 print(f'Source document does not exist')
                 return
+
+        # Step 2: Process the collected data
+        for data in source_docs_data:
+            total_to_claim += data["to_claim"]
+            if int(data["authorized_to_claim"]) > int(max_authorized_to_claim):
+                max_authorized_to_claim = data["authorized_to_claim"]
+                max_payment_claim = data["payment_claim"]
+
+        # Step 3: Perform writes - delete the source docs
+        for source_ref in source_refs:
+            transaction.delete(source_ref)
+
+        # Step 4: Update the target doc
         data = {
-                    "authorized_to_claim": str(max_authorized_to_claim),
-                    "to_claim": total_to_claim,
-                    "payment_claim": max_payment_claim,
-                    "currency": {"code": "XRP", "scale": 0.000001},
-                }
+            "authorized_to_claim": str(max_authorized_to_claim),
+            "to_claim": total_to_claim,
+            "payment_claim": max_payment_claim,
+            "currency": {"code": "XRP", "scale": 0.000001},
+        }
         if target_doc.exists:
             transaction.update(target_ref, data)
         else:
@@ -620,6 +629,7 @@ def _consolidate_payment_claim_documents_in_transaction(transaction, source_refs
     except Exception as e:
         logging.info(f"An error occured. Transaction reverted: {e}")
         raise e
+
             
 
 def consolidate_payment_claim_documents(db, source_refs, dest_ref):
