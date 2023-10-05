@@ -377,7 +377,7 @@ async def test_concurrent_move_document():
         target_ref = db.collection(target_collection_name).document(document_id + str(idx))
         
         await asyncio.sleep(0)  # Yield control to the event loop
-        dtx.move_document(db, source_ref, target_ref)
+        await dtx.move_document(db, source_ref, target_ref)
 
     # Run move_document concurrently in `concurrent_requests` coroutines
     await asyncio.gather(*(move_document_coroutine(idx) for idx in range(concurrent_requests)))

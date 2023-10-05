@@ -570,7 +570,7 @@ def _move_document_in_transaction(transaction, source_ref, target_ref):
         logging.info(f"An error occured. Transaction reverted: {e}")
         raise e
 
-def move_document(db, source_ref, destination_ref):
+async def move_document(db, source_ref, destination_ref):
     transaction = db.transaction()
     try:
         _move_document_in_transaction(transaction, source_ref, destination_ref)
