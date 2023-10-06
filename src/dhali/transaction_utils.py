@@ -580,7 +580,7 @@ def move_document(db, source_ref, destination_ref):
 
 
 @firestore.transactional
-def _consolidate_payment_claim_documents_in_transaction(transaction, source_refs, target_ref):
+def _consolidate_payment_claim_documents_in_transaction(transaction, source_docs, target_ref):
     try:
         total_to_claim = 0
         max_authorized_to_claim = "0"
@@ -592,29 +592,20 @@ def _consolidate_payment_claim_documents_in_transaction(transaction, source_refs
             max_authorized_to_claim = target_doc.to_dict()["authorized_to_claim"]
             max_payment_claim = target_doc.to_dict()["payment_claim"]
         
-        # Step 1: Collect necessary data from source_refs
-        source_docs_data = []
-        for source_ref in source_refs:
-            source_doc = next(transaction.get(source_ref))
-            if source_doc.exists:
-                doc_data = source_doc.to_dict()
-                source_docs_data.append(doc_data)
-            else:
-                print(f'Source document does not exist')
-                return
 
-        # Step 2: Process the collected data
-        for data in source_docs_data:
-            total_to_claim += data["to_claim"]
-            if int(data["authorized_to_claim"]) > int(max_authorized_to_claim):
-                max_authorized_to_claim = data["authorized_to_claim"]
-                max_payment_claim = data["payment_claim"]
+        # Step 1: Process the collected data
+        for data in source_docs:
+            dict = data.to_dict()
+            total_to_claim += dict["to_claim"]
+            if int(dict["authorized_to_claim"]) > int(max_authorized_to_claim):
+                max_authorized_to_claim = dict["authorized_to_claim"]
+                max_payment_claim = dict["payment_claim"]
 
-        # Step 3: Perform writes - delete the source docs
-        for source_ref in source_refs:
-            transaction.delete(source_ref)
+        # Step 2: Perform writes - delete the source docs
+        for source_doc in source_docs:
+            transaction.delete(source_doc.reference)
 
-        # Step 4: Update the target doc
+        # Step 3: Update the target doc
         data = {
             "authorized_to_claim": str(max_authorized_to_claim),
             "to_claim": total_to_claim,
@@ -627,15 +618,16 @@ def _consolidate_payment_claim_documents_in_transaction(transaction, source_refs
             transaction.set(target_ref, data)
 
     except Exception as e:
+        print("NOT DELETED")
         logging.info(f"An error occured. Transaction reverted: {e}")
         raise e
 
             
 
-def consolidate_payment_claim_documents(db, source_refs, dest_ref):
+def consolidate_payment_claim_documents(db, source_docs, dest_ref):
     transaction = db.transaction()
     try:
-        _consolidate_payment_claim_documents_in_transaction(transaction, source_refs, dest_ref)
+        _consolidate_payment_claim_documents_in_transaction(transaction, source_docs, dest_ref)
     except KeyError as e:
         logging.info(f'Expected KeyError: {e}')
         return
