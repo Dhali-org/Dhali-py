@@ -6,6 +6,8 @@ from fastapi import HTTPException
 from google.cloud import firestore
 import logging
 
+from dhali.rate_limiter import RateLimiter
+
 root_private_collection_name = "payment_channels"
 root_public_collection_name = "public_claim_info"
 estimate_collection_name = "estimate"
@@ -104,28 +106,32 @@ def _validation(
     parsed_claim,
     single_request_cost_estimate: int,
     settle_delay,
+    rate_limiter = RateLimiter()
 ) -> float:
     
     root_private_payment_claim_doc = root_private_payment_claim_doc_ref.get()
+    root_claim_dict = root_private_payment_claim_doc.to_dict()
+
+    rate_limiter(**root_claim_dict)
 
     updating_payment_claim = True
-    if root_private_payment_claim_doc.exists and not root_private_payment_claim_doc.to_dict():
+    if root_private_payment_claim_doc.exists and not root_claim_dict:
         # Check if payment claim was previously submitted. If so, we do not need
         # to cryptographically verify it again 
-        updating_payment_claim = json.loads(root_private_payment_claim_doc.to_dict()["payment_claim"]) != parsed_claim
-        if root_private_payment_claim_doc.to_dict()["currency"]["code"] != "XRP":
+        updating_payment_claim = json.loads(root_claim_dict["payment_claim"]) != parsed_claim
+        if root_claim_dict["currency"]["code"] != "XRP":
             raise HTTPException(
                 status_code=402,
                 detail="Your stored payment channel's currency code is invalid",
             )
-        if root_private_payment_claim_doc.to_dict()["currency"]["scale"] != 0.000001:
+        if root_claim_dict["currency"]["scale"] != 0.000001:
             raise HTTPException(
                 status_code=402,
                 detail="Your stored payment channel's currency scale is invalid",
             )
 
         to_claim = (
-            root_private_payment_claim_doc.to_dict()["to_claim"] + single_request_cost_estimate
+            root_claim_dict["to_claim"] + single_request_cost_estimate
         )
     else:
         to_claim = single_request_cost_estimate
@@ -482,7 +488,8 @@ async def validate_claim(
 
 
 async def validate_estimated_claim(
-    client, claim, single_request_cost_estimate: int, db, destination_account: str, settle_delay=15768000
+    client, claim, single_request_cost_estimate: int, db, destination_account: str, settle_delay=15768000,
+    rate_limiter = RateLimiter()
 ):
     """
     TODO
@@ -552,6 +559,7 @@ async def validate_estimated_claim(
         parsed_claim=parsed_claim,
         single_request_cost_estimate=single_request_cost_estimate,
         settle_delay=settle_delay,
+        rate_limiter=rate_limiter,
     )
 
     return uuid_estimate
@@ -607,6 +615,8 @@ def _consolidate_payment_claim_documents_in_transaction(transaction, source_docs
 
         # Step 3: Update the target doc
         data = {
+            "timestamp": datetime.datetime.utcnow(),
+            "number_of_claims_staged": len(source_docs),
             "authorized_to_claim": str(max_authorized_to_claim),
             "to_claim": total_to_claim,
             "payment_claim": max_payment_claim,
