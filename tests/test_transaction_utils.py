@@ -359,6 +359,24 @@ async def test_payment_claim_estimate_and_exact():
     assert db.collection(private_collection_name).document(uuid_channel_id).collection(exact_collection_name).document(estimate_uuid_2).get().to_dict()["payment_claim"] == json.dumps(updated_claim_2), "payment_claim not updated correctly in firestore"
     assert db.collection(private_collection_name).document(uuid_channel_id).collection(exact_collection_name).document(estimate_uuid_2).get().to_dict()["to_claim"] == 3, "to_claim not updated correctly in firestore"
 
+def test_root_private_payment_claim_doc_ref_returns_none_and_doc_does_not_exist():
+    
+    root_private_payment_claim_doc_ref = mock.Mock()
+
+    # Setting up the mock to return None when get().to_dict() is called
+    root_private_payment_claim_doc_ref.get.return_value.to_dict.return_value = None
+    root_private_payment_claim_doc_ref.get.return_value.exists = False
+
+    # When: Calling the function under test
+    try:
+        dtx._validation(None, root_private_payment_claim_doc_ref, None, None, None, None, None)
+    except TypeError as e:
+        # Check if the exception message contains key substrings related to unpacking operator
+        if "argument after **" in str(e) and "not NoneType" in str(e):
+            raise Exception(f"_validation raised a specific TypeError related to unpacking unexpectedly: {e}")
+
+
+
 @pytest.mark.asyncio
 async def test_concurrent_move_document():
     source_collection_name = 'sourceCollection'

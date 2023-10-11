@@ -111,8 +111,8 @@ def _validation(
     
     root_private_payment_claim_doc = root_private_payment_claim_doc_ref.get()
     root_claim_dict = root_private_payment_claim_doc.to_dict()
-
-    rate_limiter(**root_claim_dict)
+    if root_claim_dict != None and root_private_payment_claim_doc.exists:
+        rate_limiter(**root_claim_dict)
 
     updating_payment_claim = True
     if root_private_payment_claim_doc.exists and not root_claim_dict:
