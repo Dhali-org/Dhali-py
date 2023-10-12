@@ -628,10 +628,20 @@ def _consolidate_payment_claim_documents_in_transaction(transaction, source_docs
         }
         if target_doc.exists:
             transaction.update(target_ref, private_data)
-            transaction.update(target_ref_public, public_data)
         else:
             transaction.set(target_ref, private_data)
+
+        try:
+            public_target_doc = next(transaction.get(target_ref_public))
+            if public_target_doc.exists:
+                transaction.update(target_ref_public, public_data)
+            else:
+                transaction.set(target_ref_public, public_data)
+        except KeyError:
             transaction.set(target_ref_public, public_data)
+        except Exception as e:
+            raise e
+            
 
     except Exception as e:
         print("NOT DELETED")

@@ -537,3 +537,46 @@ async def test_concurrent_consolidate_documents():
     assert not "authorized_to_claim" in public_target_docs[0], "Authorised to claim is incorrect"
     assert public_target_docs[0]["to_claim"] == 10.1, "To claim should be the sum of all claims"
     assert not "payment_claim" in public_target_docs[0], "The payment claim should correspond to authorized_to_claim"
+
+
+@pytest.mark.asyncio
+async def test_private_exists_but_public_does_not():
+    source_collection_name = 'sourceCollection'
+    target_collection_name = 'targetCollection'
+    public_target_collection_name = 'targetCollectionPublic'
+    document_id = 'myDoc'
+    db = mockito.spy(mockfirestore.MockFirestore())
+    
+    data = {
+                    "authorized_to_claim": "4",
+                    "to_claim": 1,
+                    "payment_claim": "sig1",
+                }
+
+    src_ref = db.collection(source_collection_name).document("test")
+    src_ref.set(data)
+
+    target_ref = db.collection(target_collection_name).document("test")
+    target_ref.set(data)
+
+    public_target_ref = db.collection(public_target_collection_name).document("test")
+    public_target_ref.delete()
+    
+    dtx.consolidate_payment_claim_documents(db, [src_ref.get()], target_ref, public_target_ref)
+
+    target_docs = [target_ref.get().to_dict()]
+    public_target_docs = [public_target_ref.get().to_dict()]
+
+    with pytest.raises(KeyError):
+        fresh_doc = await src_ref.get()
+        assert not fresh_doc.exists, f"The source document was not deleted!"
+
+    assert len(target_docs) == 1, "More than one document found in the target collection!"
+    assert target_docs[0]["authorized_to_claim"] == "4", "Authorised to claim is incorrect"
+    assert target_docs[0]["to_claim"] == 2, "To claim should be the sum of all claims"
+    assert target_docs[0]["payment_claim"] == "sig1", "The payment claim should correspond to authorized_to_claim"
+
+    assert len(public_target_docs) == 1, "More than one document found in the target collection!"
+    assert not "authorized_to_claim" in "4", "Authorised to claim is incorrect"
+    assert public_target_docs[0]["to_claim"] == 2, "To claim should be the sum of all claims"
+    assert not "payment_claim" in "sig1", "The payment claim should correspond to authorized_to_claim"
