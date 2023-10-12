@@ -111,8 +111,8 @@ def _validation(
     
     root_private_payment_claim_doc = root_private_payment_claim_doc_ref.get()
     root_claim_dict = root_private_payment_claim_doc.to_dict()
-
-    rate_limiter(**root_claim_dict)
+    if root_claim_dict != None and root_private_payment_claim_doc.exists:
+        rate_limiter(**root_claim_dict)
 
     updating_payment_claim = True
     if root_private_payment_claim_doc.exists and not root_claim_dict:
@@ -588,7 +588,7 @@ def move_document(db, source_ref, destination_ref):
 
 
 @firestore.transactional
-def _consolidate_payment_claim_documents_in_transaction(transaction, source_docs, target_ref):
+def _consolidate_payment_claim_documents_in_transaction(transaction, source_docs, target_ref, target_ref_public):
     try:
         total_to_claim = 0
         max_authorized_to_claim = "0"
@@ -602,8 +602,8 @@ def _consolidate_payment_claim_documents_in_transaction(transaction, source_docs
         
 
         # Step 1: Process the collected data
-        for data in source_docs:
-            dict = data.to_dict()
+        for private_data in source_docs:
+            dict = private_data.to_dict()
             total_to_claim += dict["to_claim"]
             if int(dict["authorized_to_claim"]) > int(max_authorized_to_claim):
                 max_authorized_to_claim = dict["authorized_to_claim"]
@@ -614,7 +614,7 @@ def _consolidate_payment_claim_documents_in_transaction(transaction, source_docs
             transaction.delete(source_doc.reference)
 
         # Step 3: Update the target doc
-        data = {
+        private_data = {
             "timestamp": datetime.datetime.utcnow(),
             "number_of_claims_staged": len(source_docs),
             "authorized_to_claim": str(max_authorized_to_claim),
@@ -622,10 +622,16 @@ def _consolidate_payment_claim_documents_in_transaction(transaction, source_docs
             "payment_claim": max_payment_claim,
             "currency": {"code": "XRP", "scale": 0.000001},
         }
+        public_data = {
+            "to_claim": total_to_claim,
+            "currency": {"code": "XRP", "scale": 0.000001},
+        }
         if target_doc.exists:
-            transaction.update(target_ref, data)
+            transaction.update(target_ref, private_data)
+            transaction.update(target_ref_public, public_data)
         else:
-            transaction.set(target_ref, data)
+            transaction.set(target_ref, private_data)
+            transaction.set(target_ref_public, public_data)
 
     except Exception as e:
         print("NOT DELETED")
@@ -634,10 +640,10 @@ def _consolidate_payment_claim_documents_in_transaction(transaction, source_docs
 
             
 
-def consolidate_payment_claim_documents(db, source_docs, dest_ref):
+def consolidate_payment_claim_documents(db, source_docs, dest_ref, dest_ref_public):
     transaction = db.transaction()
     try:
-        _consolidate_payment_claim_documents_in_transaction(transaction, source_docs, dest_ref)
+        _consolidate_payment_claim_documents_in_transaction(transaction, source_docs, dest_ref, dest_ref_public)
     except KeyError as e:
         logging.info(f'Expected KeyError: {e}')
         return

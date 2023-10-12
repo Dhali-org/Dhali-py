@@ -359,6 +359,24 @@ async def test_payment_claim_estimate_and_exact():
     assert db.collection(private_collection_name).document(uuid_channel_id).collection(exact_collection_name).document(estimate_uuid_2).get().to_dict()["payment_claim"] == json.dumps(updated_claim_2), "payment_claim not updated correctly in firestore"
     assert db.collection(private_collection_name).document(uuid_channel_id).collection(exact_collection_name).document(estimate_uuid_2).get().to_dict()["to_claim"] == 3, "to_claim not updated correctly in firestore"
 
+def test_root_private_payment_claim_doc_ref_returns_none_and_doc_does_not_exist():
+    
+    root_private_payment_claim_doc_ref = mock.Mock()
+
+    # Setting up the mock to return None when get().to_dict() is called
+    root_private_payment_claim_doc_ref.get.return_value.to_dict.return_value = None
+    root_private_payment_claim_doc_ref.get.return_value.exists = False
+
+    # When: Calling the function under test
+    try:
+        dtx._validation(None, root_private_payment_claim_doc_ref, None, None, None, None, None)
+    except TypeError as e:
+        # Check if the exception message contains key substrings related to unpacking operator
+        if "argument after **" in str(e) and "not NoneType" in str(e):
+            raise Exception(f"_validation raised a specific TypeError related to unpacking unexpectedly: {e}")
+
+
+
 @pytest.mark.asyncio
 async def test_concurrent_move_document():
     source_collection_name = 'sourceCollection'
@@ -395,14 +413,16 @@ async def test_concurrent_move_document():
 async def test_concurrent_consolidate_documents():
     source_collection_name = 'sourceCollection'
     target_collection_name = 'targetCollection'
+    public_target_collection_name = 'targetCollectionPublic'
     document_id = 'myDoc'
     db = mockito.spy(mockfirestore.MockFirestore())
     concurrent_requests = 100
     
     async def consolidate_documents_coroutine(idx, source_docs):
         target_ref = db.collection(target_collection_name).document(idx)
+        public_target_ref = db.collection(public_target_collection_name).document(idx)
         await asyncio.sleep(0)  # Yield control to the event loop
-        dtx.consolidate_payment_claim_documents(db, source_docs, target_ref)
+        dtx.consolidate_payment_claim_documents(db, source_docs, target_ref, public_target_ref)
 
     def prepare_source_collection(unconsolidated_claim_data):
         for idx, data in enumerate(unconsolidated_claim_data):
@@ -443,6 +463,14 @@ async def test_concurrent_consolidate_documents():
         if db.collection(target_collection_name).document(document_id + str(idx)).get().exists == True:
             idx_inserted_at = idx
             target_docs.append(db.collection(target_collection_name).document(document_id + str(idx)).get().to_dict())
+    
+    idx_public_inserted_at = 0
+    public_target_docs = []
+    for idx in range(concurrent_requests):
+        if db.collection(public_target_collection_name).document(document_id + str(idx)).get().exists == True:
+            idx_public_inserted_at = idx
+            public_target_docs.append(db.collection(public_target_collection_name).document(document_id + str(idx)).get().to_dict())
+    
     for idx, doc in enumerate(source_docs):
         with pytest.raises(KeyError):
             fresh_doc = await doc.reference.get()
@@ -451,6 +479,13 @@ async def test_concurrent_consolidate_documents():
     assert target_docs[0]["authorized_to_claim"] == "6", "Authorised to claim is incorrect"
     assert target_docs[0]["to_claim"] == 6, "To claim should be the sum of all claims"
     assert target_docs[0]["payment_claim"] == "largest signatire", "The payment claim should correspond to authorized_to_claim"
+
+    assert idx_public_inserted_at == idx_inserted_at
+
+    assert len(public_target_docs) == 1, "More than one document found in the target collection!"
+    assert not "authorized_to_claim" in public_target_docs[0], "Authorised to claim is incorrect"
+    assert public_target_docs[0]["to_claim"] == 6, "To claim should be the sum of all claims"
+    assert not "payment_claim" in public_target_docs[0], "The payment claim should correspond to authorized_to_claim"
 
     ######################
     # Second consolidation
@@ -474,11 +509,19 @@ async def test_concurrent_consolidate_documents():
     source_docs = prepare_source_collection(unconsolidated_claim_data)  
 
     await asyncio.gather(*(consolidate_documents_coroutine(document_id + str(idx_inserted_at), source_docs) for _ in range(concurrent_requests)))
-
+    
+    idx_inserted_at = 0
     target_docs = []
     for idx in range(concurrent_requests):
         if db.collection(target_collection_name).document(document_id + str(idx)).get().exists == True:
+            idx_inserted_at = idx
             target_docs.append(db.collection(target_collection_name).document(document_id + str(idx)).get().to_dict())
+    idx_public_inserted_at = 0
+    public_target_docs = []
+    for idx in range(concurrent_requests):
+        if db.collection(public_target_collection_name).document(document_id + str(idx)).get().exists == True:
+            idx_public_inserted_at = idx
+            public_target_docs.append(db.collection(public_target_collection_name).document(document_id + str(idx)).get().to_dict())
     for idx, doc in enumerate(source_docs):
         with pytest.raises(KeyError):
             fresh_doc = await doc.reference.get()
@@ -487,3 +530,10 @@ async def test_concurrent_consolidate_documents():
     assert target_docs[0]["authorized_to_claim"] == "10", "Authorised to claim is incorrect"
     assert target_docs[0]["to_claim"] == 10.1, "To claim should be the sum of all claims"
     assert target_docs[0]["payment_claim"] == "new largest signatire", "The payment claim should correspond to authorized_to_claim"
+    
+    assert idx_public_inserted_at == idx_inserted_at
+    
+    assert len(public_target_docs) == 1, "More than one document found in the target collection!"
+    assert not "authorized_to_claim" in public_target_docs[0], "Authorised to claim is incorrect"
+    assert public_target_docs[0]["to_claim"] == 10.1, "To claim should be the sum of all claims"
+    assert not "payment_claim" in public_target_docs[0], "The payment claim should correspond to authorized_to_claim"
