@@ -479,6 +479,7 @@ async def test_concurrent_consolidate_documents():
     assert target_docs[0]["authorized_to_claim"] == "6", "Authorised to claim is incorrect"
     assert target_docs[0]["to_claim"] == 6, "To claim should be the sum of all claims"
     assert target_docs[0]["payment_claim"] == "largest signatire", "The payment claim should correspond to authorized_to_claim"
+    assert target_docs[0]["number_of_claims_staged"] == 3
 
     assert idx_public_inserted_at == idx_inserted_at
 
@@ -530,6 +531,7 @@ async def test_concurrent_consolidate_documents():
     assert target_docs[0]["authorized_to_claim"] == "10", "Authorised to claim is incorrect"
     assert target_docs[0]["to_claim"] == 10.1, "To claim should be the sum of all claims"
     assert target_docs[0]["payment_claim"] == "new largest signatire", "The payment claim should correspond to authorized_to_claim"
+    assert target_docs[0]["number_of_claims_staged"] == 3
     
     assert idx_public_inserted_at == idx_inserted_at
     
@@ -575,6 +577,7 @@ async def test_private_exists_but_public_does_not():
     assert target_docs[0]["authorized_to_claim"] == "4", "Authorised to claim is incorrect"
     assert target_docs[0]["to_claim"] == 2, "To claim should be the sum of all claims"
     assert target_docs[0]["payment_claim"] == "sig1", "The payment claim should correspond to authorized_to_claim"
+    assert target_docs[0]["number_of_claims_staged"] == 1
 
     assert len(public_target_docs) == 1, "More than one document found in the target collection!"
     assert not "authorized_to_claim" in "4", "Authorised to claim is incorrect"
