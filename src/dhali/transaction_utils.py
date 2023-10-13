@@ -595,6 +595,12 @@ def _consolidate_payment_claim_documents_in_transaction(transaction, source_docs
         max_payment_claim = ""
 
         target_doc = next(transaction.get(target_ref))
+        public_doc_exists = True
+        try:
+            target_doc_public = next(transaction.get(target_ref_public))
+        except KeyError:
+            public_doc_exists = False
+
         if target_doc.exists and 'payment_claim' in target_doc.to_dict():
             total_to_claim = target_doc.to_dict()["to_claim"]
             max_authorized_to_claim = target_doc.to_dict()["authorized_to_claim"]
@@ -631,17 +637,10 @@ def _consolidate_payment_claim_documents_in_transaction(transaction, source_docs
         else:
             transaction.set(target_ref, private_data)
 
-        try:
-            public_target_doc = next(transaction.get(target_ref_public))
-            if public_target_doc.exists:
-                transaction.update(target_ref_public, public_data)
-            else:
-                transaction.set(target_ref_public, public_data)
-        except KeyError:
-            transaction.set(target_ref_public, public_data)
-        except Exception as e:
-            raise e
-            
+        if public_doc_exists and target_doc_public.exists:
+            transaction.update(target_ref_public, public_data)
+        else:
+            transaction.set(target_ref_public, public_data)            
 
     except Exception as e:
         print("NOT DELETED")
