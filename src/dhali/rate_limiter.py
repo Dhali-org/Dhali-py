@@ -1,5 +1,6 @@
 from fastapi import HTTPException
 import datetime
+from datetime import datetime, timedelta, timezone
 
 
 class RateLimitStrategy:
@@ -47,11 +48,10 @@ class PaymentClaimBufferStrategy(RateLimitStrategy):
         ):
             if "timestamp" in kwargs:
                 timestamp = kwargs["timestamp"]
+                utc_now = datetime.now(timezone.utc)  # This is now offset-aware, set to UTC
+                time_difference = utc_now - timestamp
 
-                # Assuming timestamp is a datetime object. If it's a string, parse it first.
-                time_difference = datetime.datetime.utcnow() - timestamp
-
-                if time_difference < datetime.timedelta(seconds=self.apply_over_last):
+                if time_difference < timedelta(seconds=self.apply_over_last):
                     return True
         return False
 
@@ -87,11 +87,10 @@ class PaymentClaimAndNFTMetaBufferStrategy(RateLimitStrategy):
         ):
             if "timestamp" in kwargs:
                 timestamp = kwargs["timestamp"]
+                utc_now = datetime.now(timezone.utc)  # This is now offset-aware, set to UTC
+                time_difference = utc_now - timestamp
 
-                # Assuming timestamp is a datetime object. If it's a string, parse it first.
-                time_difference = datetime.datetime.utcnow() - timestamp
-
-                if time_difference < datetime.timedelta(seconds=self.apply_over_last):
+                if time_difference < timedelta(seconds=self.apply_over_last):
                     return True
         return False
 
