@@ -6,9 +6,10 @@ class RateLimitStrategy:
     """
     Base rate limit strategy class.
 
-    Provides a default implementation for rate limiting checks, which always returns False, 
+    Provides a default implementation for rate limiting checks, which always returns False,
     meaning no rate limiting by default.
     """
+
     def should_limit(self, *args, **kwargs):
         """
         Determine if a request should be rate limited.
@@ -24,6 +25,7 @@ class PaymentClaimBufferStrategy(RateLimitStrategy):
 
     Rate limits if the number of claims staged exceeds the limit within the last {seconds_to_apply_over} second.
     """
+
     def __init__(self, claim_buffer_size_limit: int, seconds_to_apply_over: float = 1):
         """
         Initializes with a specified claim buffer size limit.
@@ -54,10 +56,51 @@ class PaymentClaimBufferStrategy(RateLimitStrategy):
         return False
 
 
+class PaymentClaimAndNFTMetaBufferStrategy(RateLimitStrategy):
+    """
+    A specific rate limit strategy based on the number of claims and metadata updates staged, and their timestamps.
+
+    Rate limits if the number of claims or updates staged exceeds the limit within the last {seconds_to_apply_over} second.
+    """
+
+    def __init__(self, buffer_size_limit: int, seconds_to_apply_over: float = 1):
+        """
+        Initializes with a specified claim buffer size limit.
+
+        :param buffer_size_limit: The maximum number of claims allowed within the buffer.
+        """
+        self.apply_over_last = seconds_to_apply_over
+        self._buffer_size_limit = buffer_size_limit
+
+    def should_limit(self, *args, **kwargs):
+        """
+        Determine if a request should be rate limited based on claim count and timestamp.
+
+        :return: True if the claims exceed the limit and the timestamp is within the last {self.time_difference}, else False.
+        """
+        if (
+            "number_of_claims_staged" in kwargs
+            and kwargs["number_of_claims_staged"] >= self._buffer_size_limit
+        ) or (
+            "number_of_metadata_updates_staged" in kwargs
+            and kwargs["number_of_metadata_updates_staged"] >= self._buffer_size_limit
+        ):
+            if "timestamp" in kwargs:
+                timestamp = kwargs["timestamp"]
+
+                # Assuming timestamp is a datetime object. If it's a string, parse it first.
+                time_difference = datetime.datetime.utcnow() - timestamp
+
+                if time_difference < datetime.timedelta(seconds=self.apply_over_last):
+                    return True
+        return False
+
+
 class RateLimiter:
     """
     A callable rate limiter that utilizes a rate limiting strategy to determine if a request should be limited.
     """
+
     def __init__(self, strategy: RateLimitStrategy = RateLimitStrategy()):
         """
         Initializes with a specified rate limiting strategy.
@@ -68,7 +111,7 @@ class RateLimiter:
 
     def __call__(self, *args, **kwargs):
         """
-        Checks if a request should be rate limited based on the strategy. 
+        Checks if a request should be rate limited based on the strategy.
 
         Raises an exception if the request is to be rate limited.
         """
