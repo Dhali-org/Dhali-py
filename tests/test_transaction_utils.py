@@ -211,7 +211,7 @@ async def test_payment_claim_estimate_limited():
         "currency": {"code": "XRP", "scale": 0.000001},
         "to_claim": 5,
         "payment_claim": json.dumps(claim),
-        "timestamp": datetime.datetime.utcnow(),
+        "timestamp": datetime.datetime.now(datetime.timezone.utc),
         "number_of_claims_staged": number_claims_staged
     })
  
