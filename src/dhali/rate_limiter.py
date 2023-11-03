@@ -56,18 +56,18 @@ class PaymentClaimBufferStrategy(RateLimitStrategy):
         return False
 
 
-class PaymentClaimAndNFTMetaBufferStrategy(RateLimitStrategy):
+class NFTMetaBufferStrategy(RateLimitStrategy):
     """
-    A specific rate limit strategy based on the number of claims and metadata updates staged, and their timestamps.
+    A specific rate limit strategy based on the number of metadata updates staged, and their timestamps.
 
-    Rate limits if the number of claims or updates staged exceeds the limit within the last {seconds_to_apply_over} second.
+    Rate limits if the number of metadata updates staged exceeds the limit within the last {seconds_to_apply_over} second.
     """
 
     def __init__(self, buffer_size_limit: int, seconds_to_apply_over: float = 1):
         """
-        Initializes with a specified claim buffer size limit.
+        Initializes with a specified metadata buffer size limit.
 
-        :param buffer_size_limit: The maximum number of claims allowed within the buffer.
+        :param buffer_size_limit: The maximum number of metadata updates allowed within the buffer.
         """
         self.apply_over_last = seconds_to_apply_over
         self._buffer_size_limit = buffer_size_limit
@@ -79,9 +79,6 @@ class PaymentClaimAndNFTMetaBufferStrategy(RateLimitStrategy):
         :return: True if the claims exceed the limit and the timestamp is within the last {self.time_difference}, else False.
         """
         if (
-            "number_of_claims_staged" in kwargs
-            and kwargs["number_of_claims_staged"] >= self._buffer_size_limit
-        ) or (
             "number_of_metadata_updates_staged" in kwargs
             and kwargs["number_of_metadata_updates_staged"] >= self._buffer_size_limit
         ):
