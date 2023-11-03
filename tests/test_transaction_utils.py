@@ -1,5 +1,7 @@
 import asyncio
+import datetime
 from unittest import mock
+from fastapi import HTTPException
 import mockfirestore
 import mockito
 import pytest
@@ -7,6 +9,7 @@ import uuid
 import json
 
 import xrpl
+from dhali import rate_limiter
 
 import dhali.transaction_utils as dtx
 
@@ -181,6 +184,67 @@ async def test_payment_claim_updated():
     assert db.collection(private_collection_name).document(uuid_channel_id).get().to_dict()["authorized_to_claim"] == f"{new_authorized_amount}", "authorized_to_claim not updated correctly in firestore"
     assert db.collection(private_collection_name).document(uuid_channel_id).get().to_dict()["payment_claim"] == json.dumps(updated_claim), "payment_claim not updated correctly in firestore"
     assert db.collection(private_collection_name).document(uuid_channel_id).get().to_dict()["to_claim"] == 2 * 5, "to_claim not updated correctly in firestore"
+
+@pytest.mark.asyncio
+async def test_payment_claim_estimate_limited():
+    """Test to make sure that the rate limiter is being applied"""
+
+
+    authorized_amount = 9000
+    number_claims_staged = 10
+    valid_signature = "some_valid_signature"
+    some_valid_account = "a_valid_source_account"
+    some_other_valid_account = "a_valid_destination_account"
+
+    claim = {
+                "account": f"{some_valid_account}", 
+                "destination_account" : f"{some_other_valid_account}", 
+                "authorized_to_claim": f"{authorized_amount}", 
+                "signature": f"{valid_signature}", 
+                "channel_id": "some_valid_channel_id"
+            }
+
+    uuid_channel_id = str(uuid.uuid5(uuid.NAMESPACE_URL, claim["channel_id"]))
+    db = mockito.spy(mockfirestore.MockFirestore())
+    db.collection("payment_channels").document(uuid_channel_id).set({
+        "authorized_to_claim": claim["authorized_to_claim"],
+        "currency": {"code": "XRP", "scale": 0.000001},
+        "to_claim": 5,
+        "payment_claim": json.dumps(claim),
+        "timestamp": datetime.datetime.utcnow(),
+        "number_of_claims_staged": number_claims_staged
+    })
+ 
+    mock_xrpl_json_rpc = mock.Mock()
+    payment_claim_buffer_strategy = rate_limiter.PaymentClaimBufferStrategy(
+        claim_buffer_size_limit=number_claims_staged
+    )
+    payment_claim_buffer_limiter = rate_limiter.RateLimiter(payment_claim_buffer_strategy)
+
+    # Check that it raises
+    with pytest.raises(HTTPException) as e:
+        await dtx.validate_estimated_claim(
+                client=mock_xrpl_json_rpc,
+                claim=json.dumps(claim),
+                single_request_cost_estimate=5,
+                db=db,
+                destination_account=some_other_valid_account,
+                rate_limiter=payment_claim_buffer_limiter
+            )
+    # Also check that it has the 429 code
+    try:
+        await dtx.validate_estimated_claim(
+            client=mock_xrpl_json_rpc,
+            claim=json.dumps(claim),
+            single_request_cost_estimate=5,
+            db=db,
+            destination_account=some_other_valid_account,
+            rate_limiter=payment_claim_buffer_limiter
+        )
+    except HTTPException as e:
+        assert e.status_code == 429
+    
+
 
 @pytest.mark.asyncio
 async def test_payment_claim_estimate_and_exact():
