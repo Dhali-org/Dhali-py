@@ -100,7 +100,6 @@ def _transactional_validation(
 
 
 def _validation(
-    db,
     root_private_payment_claim_doc_ref,
     ledger_client,
     parsed_claim,
@@ -145,22 +144,6 @@ def _validation(
 
     if updating_payment_claim:
         validate(parsed_claim=parsed_claim, ledger_client=ledger_client, settle_delay=settle_delay)
-
-    uuid_estimate = str(uuid.uuid4())
-    estimated_payment_claim_doc_ref = db.collection(root_private_collection_name).document(root_private_payment_claim_doc.id).collection(estimate_collection_name).document(uuid_estimate)
-    estimated_payment_claim_doc_ref.set(
-        {
-            "timestamp": datetime.datetime.utcnow(),
-            "authorized_to_claim": parsed_claim["authorized_to_claim"],
-            "to_claim": single_request_cost_estimate, # TODO: Remove this once other infra migrated to use public firestore
-            "currency": {"code": "XRP", "scale": 0.000001},
-            "payment_claim": json.dumps(parsed_claim),
-        },
-    )
-    return uuid_estimate
-
-
-
 
 
 def validate(parsed_claim, ledger_client, settle_delay):
@@ -405,6 +388,42 @@ async def validate_exact_claim(
 
 
 
+async def store_exact_claim(
+    claim, single_request_exact_cost: int, db
+) -> float:
+    """
+    Parameters
+    ----------
+    claim : str
+    single_request_exact_cost : int
+    db: firestore.Client
+
+    Returns
+    -------
+    void
+    """
+    try:
+        parsed_claim = json.loads(claim)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=402,
+            detail=f"You must provide a payment channel claim that can be parsed via json.loads. Error: {e}.",
+        )
+    
+    uuid_channel_id = str(uuid.uuid5(uuid.NAMESPACE_URL, parsed_claim["channel_id"]))
+    exact_payment_claim_doc_ref = db.collection(root_private_collection_name).document(uuid_channel_id).collection(exact_collection_name).document()
+    exact_payment_claim_doc_ref.set(
+        {
+            "timestamp": datetime.datetime.utcnow(),
+            "authorized_to_claim": parsed_claim["authorized_to_claim"],
+            "to_claim": single_request_exact_cost,
+            "currency": {"code": "XRP", "scale": 0.000001},
+            "payment_claim": json.dumps(parsed_claim),
+        },
+    )
+    return exact_payment_claim_doc_ref.id
+
+
 async def validate_claim(
     client, claim, single_request_cost_estimate: int, db, destination_account: str, settle_delay=15768000
 ):
@@ -552,8 +571,7 @@ async def validate_estimated_claim(
 
     root_private_payment_claim_doc_ref = db.collection(root_private_collection_name).document(uuid_channel_id)
     
-    uuid_estimate = _validation(
-        db=db,
+    _validation(
         root_private_payment_claim_doc_ref=root_private_payment_claim_doc_ref,
         ledger_client=client,
         parsed_claim=parsed_claim,
@@ -562,7 +580,6 @@ async def validate_estimated_claim(
         rate_limiter=rate_limiter,
     )
 
-    return uuid_estimate
 
 @firestore.transactional
 def _move_document_in_transaction(transaction, source_ref, target_ref):
