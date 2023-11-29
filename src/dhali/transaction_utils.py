@@ -114,7 +114,7 @@ def _validation(
         rate_limiter(**root_claim_dict)
 
     updating_payment_claim = True
-    if root_private_payment_claim_doc.exists and not root_claim_dict:
+    if root_private_payment_claim_doc.exists and root_claim_dict:
         # Check if payment claim was previously submitted. If so, we do not need
         # to cryptographically verify it again 
         updating_payment_claim = json.loads(root_claim_dict["payment_claim"]) != parsed_claim

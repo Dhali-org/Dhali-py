@@ -245,6 +245,142 @@ async def test_payment_claim_estimate_limited():
         assert e.status_code == 429
     
 
+@pytest.mark.asyncio
+async def test_xrpl_client_not_called_with_duplicate_claim():
+    """Test to make sure xrpl client not called for duplicate claim"""
+
+    claim = {"account": "some_valid_account", "destination_account": "some_valid_account", "authorized_to_claim": "9001", "signature": "some_valid_signature", "channel_id": "some_valid_channel_id"}
+
+    db = mockito.spy(mockfirestore.MockFirestore())
+
+    public_collection_name = "public_claim_info"
+    private_collection_name = "payment_channels"
+
+    uuid_channel_id = str(uuid.uuid5(uuid.NAMESPACE_URL, claim["channel_id"]))
+
+    private_payment_claim_doc_ref = db.collection(private_collection_name).document(uuid_channel_id)
+    public_payment_claim_doc_ref = db.collection(public_collection_name).document(uuid_channel_id)
+
+    private_payment_claim_doc_ref.set({
+        "authorized_to_claim": claim["authorized_to_claim"],
+        "currency": {"code": "XRP", "scale": 0.000001},
+        "to_claim": 5,
+        "payment_claim": json.dumps(claim),
+    })
+    public_payment_claim_doc_ref.set({
+        "to_claim": 5,
+        "currency": {"code": "XRP", "scale": 0.000001},
+    })
+
+    mock_xrpl_json_rpc = mock.Mock()
+
+    await dtx.validate_estimated_claim(
+        client=mock_xrpl_json_rpc,
+        claim=json.dumps(claim),
+        single_request_cost_estimate=5,
+        db=db,
+        destination_account="some_valid_account"
+    )
+
+    mock_xrpl_json_rpc.assert_not_called
+
+@pytest.mark.asyncio
+async def test_payment_claim_estimate_fails():
+    """Test to make sure that validate_estimated_claim raises 402"""
+
+    # Should raise 402 because to_claim_amount + single_request_cost_estimate > authorized_amount
+    authorized_amount = 9000
+    to_claim_amount = 8996
+    single_request_cost_estimate = 5
+
+    valid_signature = "some_valid_signature"
+    some_valid_account = "a_valid_source_account"
+    some_other_valid_account = "a_valid_destination_account"
+
+    claim = {
+                "account": f"{some_valid_account}", 
+                "destination_account" : f"{some_other_valid_account}", 
+                "authorized_to_claim": f"{authorized_amount}", 
+                "signature": f"{valid_signature}", 
+                "channel_id": "some_valid_channel_id"
+            }
+
+    uuid_channel_id = str(uuid.uuid5(uuid.NAMESPACE_URL, claim["channel_id"]))
+    db = mockito.spy(mockfirestore.MockFirestore())
+    db.collection("payment_channels").document(uuid_channel_id).set({
+        "authorized_to_claim": claim["authorized_to_claim"],
+        "currency": {"code": "XRP", "scale": 0.000001},
+        "to_claim": to_claim_amount,
+        "payment_claim": json.dumps(claim),
+        "timestamp": datetime.datetime.now(datetime.timezone.utc),
+        "number_of_claims_staged": 1
+    })
+ 
+    mock_xrpl_json_rpc = mock.Mock()
+
+    # Check that it raises
+    with pytest.raises(HTTPException) as e:
+        await dtx.validate_estimated_claim(
+                client=mock_xrpl_json_rpc,
+                claim=json.dumps(claim),
+                single_request_cost_estimate=single_request_cost_estimate,
+                db=db,
+                destination_account=some_other_valid_account,
+            )
+    # Also check that it has the 402 code
+    try:
+        await dtx.validate_estimated_claim(
+            client=mock_xrpl_json_rpc,
+            claim=json.dumps(claim),
+            single_request_cost_estimate=single_request_cost_estimate,
+            db=db,
+            destination_account=some_other_valid_account,
+        )
+    except HTTPException as e:
+        assert e.status_code == 402
+
+@pytest.mark.asyncio
+async def test_payment_claim_estimate_passes():
+    """Test to make sure that validate_estimated_claim does not raise"""
+
+    # Should not raise 402 because to_claim_amount + single_request_cost_estimate < authorized_amount
+    authorized_amount = 9000
+    to_claim_amount = 8994
+    single_request_cost_estimate = 5
+    
+    valid_signature = "some_valid_signature"
+    some_valid_account = "a_valid_source_account"
+    some_other_valid_account = "a_valid_destination_account"
+
+    claim = {
+                "account": f"{some_valid_account}", 
+                "destination_account" : f"{some_other_valid_account}", 
+                "authorized_to_claim": f"{authorized_amount}", 
+                "signature": f"{valid_signature}", 
+                "channel_id": "some_valid_channel_id"
+            }
+
+    uuid_channel_id = str(uuid.uuid5(uuid.NAMESPACE_URL, claim["channel_id"]))
+    db = mockito.spy(mockfirestore.MockFirestore())
+    db.collection("payment_channels").document(uuid_channel_id).set({
+        "authorized_to_claim": claim["authorized_to_claim"],
+        "currency": {"code": "XRP", "scale": 0.000001},
+        "to_claim": to_claim_amount,
+        "payment_claim": json.dumps(claim),
+        "timestamp": datetime.datetime.now(datetime.timezone.utc),
+        "number_of_claims_staged": 1
+    })
+ 
+    mock_xrpl_json_rpc = mock.Mock()
+
+    # Should not raise
+    await dtx.validate_estimated_claim(
+                client=mock_xrpl_json_rpc,
+                claim=json.dumps(claim),
+                single_request_cost_estimate=5,
+                db=db,
+                destination_account=some_other_valid_account,
+            )
 
 @pytest.mark.asyncio
 async def test_payment_claim_estimate_and_exact():
