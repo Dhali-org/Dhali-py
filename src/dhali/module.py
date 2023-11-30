@@ -13,7 +13,7 @@ class Module:
 
     def __init__(self, asset_uuid: str):
         self.asset_uuid = asset_uuid
-        self.url = f"https://dhali-prod-run-dauenf0n.uc.gateway.dev/{asset_uuid}/run"
+        self.url = f"https://dhali-prod-run-dauenf0n.uc.gateway.dev/{asset_uuid}/run/"
 
     def run(
         self, input_file: Union[IO[bytes], BinaryIO], payment_claim: Dict[str, Any]
