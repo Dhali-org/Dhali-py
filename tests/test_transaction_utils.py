@@ -223,7 +223,7 @@ async def test_payment_claim_estimate_limited():
 
     # Check that it raises
     with pytest.raises(HTTPException) as e:
-        await dtx.validate_estimated_claim(
+        await dtx.throw_if_claim_invalid(
                 client=mock_xrpl_json_rpc,
                 claim=json.dumps(claim),
                 single_request_cost_estimate=5,
@@ -233,7 +233,7 @@ async def test_payment_claim_estimate_limited():
             )
     # Also check that it has the 429 code
     try:
-        await dtx.validate_estimated_claim(
+        await dtx.throw_if_claim_invalid(
             client=mock_xrpl_json_rpc,
             claim=json.dumps(claim),
             single_request_cost_estimate=5,
@@ -274,7 +274,7 @@ async def test_xrpl_client_not_called_with_duplicate_claim():
 
     mock_xrpl_json_rpc = mock.Mock()
 
-    await dtx.validate_estimated_claim(
+    await dtx.throw_if_claim_invalid(
         client=mock_xrpl_json_rpc,
         claim=json.dumps(claim),
         single_request_cost_estimate=5,
@@ -320,7 +320,7 @@ async def test_payment_claim_estimate_fails():
 
     # Check that it raises
     with pytest.raises(HTTPException) as e:
-        await dtx.validate_estimated_claim(
+        await dtx.throw_if_claim_invalid(
                 client=mock_xrpl_json_rpc,
                 claim=json.dumps(claim),
                 single_request_cost_estimate=single_request_cost_estimate,
@@ -329,7 +329,7 @@ async def test_payment_claim_estimate_fails():
             )
     # Also check that it has the 402 code
     try:
-        await dtx.validate_estimated_claim(
+        await dtx.throw_if_claim_invalid(
             client=mock_xrpl_json_rpc,
             claim=json.dumps(claim),
             single_request_cost_estimate=single_request_cost_estimate,
@@ -374,7 +374,7 @@ async def test_payment_claim_estimate_passes():
     mock_xrpl_json_rpc = mock.Mock()
 
     # Should not raise
-    await dtx.validate_estimated_claim(
+    await dtx.throw_if_claim_invalid(
                 client=mock_xrpl_json_rpc,
                 claim=json.dumps(claim),
                 single_request_cost_estimate=5,
@@ -436,7 +436,7 @@ async def test_payment_claim_estimate_and_exact():
     
     uuid_channel_id = str(uuid.uuid5(uuid.NAMESPACE_URL, claim["channel_id"]))
 
-    await dtx.validate_estimated_claim(
+    await dtx.throw_if_claim_invalid(
         client=mock_xrpl_json_rpc,
         claim=json.dumps(claim),
         single_request_cost_estimate=5,

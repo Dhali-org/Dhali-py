@@ -506,7 +506,7 @@ async def validate_claim(
 
 
 
-async def validate_estimated_claim(
+async def throw_if_claim_invalid(
     client, claim, single_request_cost_estimate: int, db, destination_account: str, settle_delay=15768000,
     rate_limiter = RateLimiter()
 ):
