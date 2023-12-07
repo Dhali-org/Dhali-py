@@ -185,6 +185,50 @@ async def test_payment_claim_updated():
     assert db.collection(private_collection_name).document(uuid_channel_id).get().to_dict()["payment_claim"] == json.dumps(updated_claim), "payment_claim not updated correctly in firestore"
     assert db.collection(private_collection_name).document(uuid_channel_id).get().to_dict()["to_claim"] == 2 * 5, "to_claim not updated correctly in firestore"
 
+
+@pytest.mark.asyncio
+async def test_payment_claims_sweeped():
+    """Test to make sure that the payment documents are sweeped"""
+
+
+    authorized_amount = 9000
+    new_authorized_amount =10000
+    valid_signature = "some_valid_signature"
+    some_valid_account = "a_valid_source_account"
+    some_other_valid_account = "a_valid_destination_account"
+
+    claim = {"account": f"{some_valid_account}", "destination_account" : f"{some_other_valid_account}", "authorized_to_claim": f"{authorized_amount}", "signature": f"{valid_signature}", "channel_id": "some_valid_channel_id"}
+
+    db = mockito.spy(mockfirestore.MockFirestore())
+
+    public_collection_name = "public_claim_info"
+    private_collection_name = "payment_channels"
+
+    uuid_channel_id = str(uuid.uuid5(uuid.NAMESPACE_URL, claim["channel_id"]))
+
+    private_payment_claim_doc_ref = db.collection(private_collection_name).document(uuid_channel_id)
+    public_payment_claim_doc_ref = db.collection(public_collection_name).document(uuid_channel_id)
+
+    private_payment_claim_doc_ref.set({
+        "authorized_to_claim": claim["authorized_to_claim"],
+        "currency": {"code": "XRP", "scale": 0.000001},
+        "to_claim": 5,
+        "payment_claim": json.dumps(claim),
+    })
+    public_payment_claim_doc_ref.set({
+        "to_claim": 5,
+        "currency": {"code": "XRP", "scale": 0.000001},
+    })
+
+    dtx.clear_sweeped_claim_for(id=uuid_channel_id, db=db)
+
+    private_payment_claim_doc_ref = db.collection(private_collection_name).document(uuid_channel_id)
+    public_payment_claim_doc_ref = db.collection(public_collection_name).document(uuid_channel_id)
+
+    assert not public_payment_claim_doc_ref.get().exists
+    assert not private_payment_claim_doc_ref.get().exists
+
+
 @pytest.mark.asyncio
 async def test_payment_claim_estimate_limited():
     """Test to make sure that the rate limiter is being applied"""
