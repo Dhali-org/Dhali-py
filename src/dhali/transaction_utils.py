@@ -145,9 +145,30 @@ def _validation(
     if updating_payment_claim:
         validate(parsed_claim=parsed_claim, ledger_client=ledger_client, settle_delay=settle_delay)
 
+def get_channel_dict(parsed_claim, ledger_client, settle_delay):
+    """
+    Retrieves and validates a payment channel from the XRPL based on the provided claim details.
 
-def validate(parsed_claim, ledger_client, settle_delay):
+    This function queries the XRPL for channels associated with the account and destination account
+    specified in the parsed_claim. It then iterates through these channels to find one that matches
+    the criteria specified in parsed_claim and the settle_delay parameter.
 
+    Parameters:
+    - parsed_claim (dict): A dictionary containing details of the claim. Expected keys are
+      'account', 'destination_account', 'channel_id', and 'authorized_to_claim'.
+    - ledger_client: An instance of a client connected to the XRPL.
+    - settle_delay (int): The required settle delay for the channel.
+
+    Returns:
+    - dict: The channel that matches the specified criteria.
+
+    Raises:
+    - HTTPException: If no channels are found in the ledger response, or if no channel matches
+      the specified criteria, an exception is raised with details about the mismatch.
+
+    Note:
+    - This function does not accept channels that are expirable for safety reasons.
+    """
     account_channels = xrpl.models.requests.AccountChannels(
         account=parsed_claim["account"],
         destination_account=parsed_claim["destination_account"],
@@ -155,7 +176,6 @@ def validate(parsed_claim, ledger_client, settle_delay):
 
     account_channels_response = ledger_client.request(account_channels)
 
-    valid_channel = False
     if "channels" not in account_channels_response.to_dict()["result"]:
         raise HTTPException(
             status_code=402,
@@ -180,13 +200,16 @@ def validate(parsed_claim, ledger_client, settle_delay):
             and correct_amt
             and not expirable_channel
         ):
-            valid_channel = True
-            break
-    if not valid_channel:
-        raise HTTPException(
-            status_code=402,
-            detail=f"Your claim is invalid: correct_delay={correct_del}, correct_src={correct_src}, correct_dest={correct_dst}, correct_channel_id={correct_cha}, correct_amt={correct_amt}, not expirable_channel={not expirable_channel}",
-        )
+            return channel
+        
+    raise HTTPException(
+        status_code=402,
+        detail=f"Your claim is invalid: correct_delay={correct_del}, correct_src={correct_src}, correct_dest={correct_dst}, correct_channel_id={correct_cha}, correct_amt={correct_amt}, not expirable_channel={not expirable_channel}",
+    )
+
+def validate(parsed_claim, ledger_client, settle_delay):
+
+    channel = get_channel_dict(parsed_claim, ledger_client, settle_delay)
 
     channel_verify = xrpl.models.requests.ChannelVerify(
         amount=parsed_claim["authorized_to_claim"],
