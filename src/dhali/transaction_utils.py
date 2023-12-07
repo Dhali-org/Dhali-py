@@ -16,6 +16,12 @@ request_charge_header_key = "Dhali-Latest-Request-Charge"
 request_total_charge_header_key = "Dhali-Total-Requests-Charge"
 
 @firestore.transactional
+def _transactional_delete(transaction, public_ref, private_ref) -> float:
+    transaction.delete(public_ref)
+    transaction.delete(private_ref)
+
+
+@firestore.transactional
 def _transactional_validation(
     transaction,
     public_doc_ref,
@@ -409,6 +415,15 @@ async def validate_exact_claim(
             status_code=500, detail="An unknown error occured."
         )
 
+def clear_sweeped_claim_for(id, db):
+    private_ref = db.collection("payment_channels").document(id)
+    public_ref = db.collection("public_claim_info").document(id)
+
+    transaction = db.transaction()
+
+    _transactional_delete(transaction=transaction, 
+                          public_ref=public_ref, 
+                          private_ref=private_ref)
 
 
 async def store_exact_claim(
