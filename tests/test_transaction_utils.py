@@ -328,6 +328,71 @@ async def test_xrpl_client_not_called_with_duplicate_claim():
 
     mock_xrpl_json_rpc.assert_not_called
 
+
+@pytest.mark.asyncio
+async def test_to_claim_correctly_swept():
+    """Test to make sure public and private root claim is updated correctly"""
+
+    db = mockito.spy(mockfirestore.MockFirestore())
+    public_collection_name = "public_claim_info"
+    private_collection_name = "payment_channels"
+    uuid_channel_id = "DUMMY_ID"
+    private_payment_claim_doc_ref = db.collection(private_collection_name).document(uuid_channel_id)
+    public_payment_claim_doc_ref = db.collection(public_collection_name).document(uuid_channel_id)
+    stored_to_claim = 5
+    private_payment_claim_doc_ref.set({
+        "authorized_to_claim": "DUMMY_AUTH_VALUE",
+        "currency": {"code": "XRP", "scale": 0.000001},
+        "to_claim": stored_to_claim,
+        "payment_claim": "DUMMY_CLAIM"
+    })
+    public_payment_claim_doc_ref.set({
+        "to_claim": stored_to_claim,
+        "currency": {"code": "XRP", "scale": 0.000001},
+    })
+    amount_to_actually_claim = 4
+
+    dtx.update_claim_after_sweep(
+        id=uuid_channel_id,
+        db=db,
+        to_claim=amount_to_actually_claim
+    )
+
+    assert private_payment_claim_doc_ref.get().to_dict()["to_claim"] == stored_to_claim - amount_to_actually_claim
+    assert public_payment_claim_doc_ref.get().to_dict()["to_claim"] == stored_to_claim - amount_to_actually_claim
+
+@pytest.mark.asyncio
+async def test_to_claim_throws_when_updated_to_negative():
+    """Test to make sure update_claim_after_sweep throws on negative to_claim"""
+
+    db = mockito.spy(mockfirestore.MockFirestore())
+
+    public_collection_name = "public_claim_info"
+    private_collection_name = "payment_channels"
+    uuid_channel_id = "DUMMY_ID"
+    private_payment_claim_doc_ref = db.collection(private_collection_name).document(uuid_channel_id)
+    public_payment_claim_doc_ref = db.collection(public_collection_name).document(uuid_channel_id)
+    stored_to_claim = 5
+    private_payment_claim_doc_ref.set({
+        "authorized_to_claim": "DUMMY_AUTH_VALUE",
+        "currency": {"code": "XRP", "scale": 0.000001},
+        "to_claim": stored_to_claim,
+        "payment_claim": "DUMMY_CLAIM"
+    })
+    public_payment_claim_doc_ref.set({
+        "to_claim": stored_to_claim,
+        "currency": {"code": "XRP", "scale": 0.000001},
+    })
+    # Should throw because amount_to_actually_claim > stored_to_claim
+    amount_to_actually_claim = 6
+
+    with pytest.raises(Exception) as e:
+        dtx.update_claim_after_sweep(
+            id=uuid_channel_id,
+            db=db,
+            to_claim=amount_to_actually_claim
+        )
+
 @pytest.mark.asyncio
 async def test_payment_claim_estimate_fails():
     """Test to make sure that validate_estimated_claim raises 402"""
