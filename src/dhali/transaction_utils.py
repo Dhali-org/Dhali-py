@@ -20,6 +20,25 @@ def _transactional_delete(transaction, public_ref, private_ref) -> float:
     transaction.delete(public_ref)
     transaction.delete(private_ref)
 
+@firestore.transactional
+def _transactional_updpate_to_claim_value(transaction, public_ref, private_ref, to_claim) -> float:
+    
+    public_doc = next(transaction.get(public_ref))
+    private_doc = next(transaction.get(private_ref))
+
+    if not public_doc.exists:
+        raise Exception("Public payment claim does not exist!")
+    if not private_doc.exists:
+        raise Exception("Private payment claim does not exist")
+
+    # Subtract the amount from the field
+    current_value = private_doc.get('to_claim')
+    new_value = current_value - to_claim
+    if new_value < 0:
+        raise Exception("to_claim value cannot be negative")
+    transaction.update(public_ref, {'to_claim': new_value})
+    transaction.update(private_ref, {'to_claim': new_value})
+
 
 @firestore.transactional
 def _transactional_validation(
@@ -425,6 +444,16 @@ def clear_sweeped_claim_for(id, db):
                           public_ref=public_ref, 
                           private_ref=private_ref)
 
+def update_claim_after_sweep(id, to_claim, db):
+    private_ref = db.collection("payment_channels").document(id)
+    public_ref = db.collection("public_claim_info").document(id)
+
+    transaction = db.transaction()
+
+    _transactional_updpate_to_claim_value(transaction=transaction, 
+                          public_ref=public_ref, 
+                          private_ref=private_ref,
+                          to_claim=to_claim)
 
 async def store_exact_claim(
     claim, single_request_exact_cost: int, db
