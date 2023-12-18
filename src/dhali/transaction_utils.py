@@ -28,11 +28,17 @@ def _transactional_update_claim_after_sweep(transaction, private_ref, to_claim) 
     if not private_doc.exists:
         raise Exception("Private payment claim does not exist")
     # Subtract the amount from the field
-    current_value = private_doc.get('to_claim')
-    new_value = current_value - to_claim
-    if new_value < 0:
+    private_doc_dict = private_doc.to_dict()
+    current_to_claim = private_doc_dict['to_claim']
+    current_claimed = 0
+    if "claimed" in private_doc_dict:
+        current_claimed = private_doc_dict["claimed"]
+
+    delta = current_to_claim - to_claim
+    if current_to_claim - to_claim < 0:
         raise Exception("Attempting to claim more than should be claimed")
-    if new_value == 0:
+    if current_claimed - to_claim == 0:
+        # Do nothing because this amount has already been claimed
         return
     transaction.update(private_ref, {'claimed': to_claim})
 
