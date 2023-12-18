@@ -445,7 +445,7 @@ async def test_nothing_updated_when_claimed_equals_to_claim():
     private_doc_mock.exists = True
     transaction_mock._max_attempts = 1
     mockito.when(transaction_mock).get(private_ref_mock).thenReturn(iter([private_doc_mock]))
-    mockito.when(private_doc_mock).get('to_claim').thenReturn(to_claim)
+    mockito.when(private_doc_mock).to_dict().thenReturn({'to_claim': to_claim, 'claimed': to_claim})
 
     # Call the transactional function
     dtx._transactional_update_claim_after_sweep(transaction_mock, private_ref_mock, to_claim)
