@@ -330,8 +330,9 @@ async def test_xrpl_client_not_called_with_duplicate_claim():
 
 
 @pytest.mark.asyncio
-async def test_to_claim_correctly_swept():
-    """Test to make sure public and private root claim is updated correctly"""
+async def test_to_claim_correctly_freshly_swept():
+    """Test to make sure public and private root claim is updated correctly
+    for the first time"""
 
     db = mockito.spy(mockfirestore.MockFirestore())
     public_collection_name = "public_claim_info"
@@ -358,11 +359,48 @@ async def test_to_claim_correctly_swept():
         to_claim=amount_to_actually_claim
     )
 
-    assert private_payment_claim_doc_ref.get().to_dict()["to_claim"] == stored_to_claim - amount_to_actually_claim
-    assert public_payment_claim_doc_ref.get().to_dict()["to_claim"] == stored_to_claim - amount_to_actually_claim
+    assert private_payment_claim_doc_ref.get().to_dict()["to_claim"] == stored_to_claim
+    assert public_payment_claim_doc_ref.get().to_dict()["to_claim"] == stored_to_claim
+    assert private_payment_claim_doc_ref.get().to_dict()["claimed"] == amount_to_actually_claim
+    assert "claimed" not in public_payment_claim_doc_ref.get().to_dict().keys()
 
 @pytest.mark.asyncio
-async def test_to_claim_throws_when_updated_to_negative():
+async def test_to_claim_correctly_when_another_sweep_applied():
+    """Test to make sure public and private root claim is updated correctly
+    for subsequent claim sweeps"""
+
+    db = mockito.spy(mockfirestore.MockFirestore())
+    public_collection_name = "public_claim_info"
+    private_collection_name = "payment_channels"
+    uuid_channel_id = "DUMMY_ID"
+    private_payment_claim_doc_ref = db.collection(private_collection_name).document(uuid_channel_id)
+    public_payment_claim_doc_ref = db.collection(public_collection_name).document(uuid_channel_id)
+    stored_to_claim = 5
+    private_payment_claim_doc_ref.set({
+        "authorized_to_claim": "DUMMY_AUTH_VALUE",
+        "currency": {"code": "XRP", "scale": 0.000001},
+        "to_claim": stored_to_claim,
+        "claimed": stored_to_claim - 2,
+        "payment_claim": "DUMMY_CLAIM"
+    })
+    public_payment_claim_doc_ref.set({
+        "to_claim": stored_to_claim,
+        "currency": {"code": "XRP", "scale": 0.000001},
+    })
+
+    dtx.update_claim_after_sweep(
+        id=uuid_channel_id,
+        db=db,
+        to_claim=stored_to_claim
+    )
+
+    assert private_payment_claim_doc_ref.get().to_dict()["to_claim"] == stored_to_claim, "Should be unchanged"
+    assert public_payment_claim_doc_ref.get().to_dict()["to_claim"] == stored_to_claim, "Should be unchanged"
+    assert private_payment_claim_doc_ref.get().to_dict()["to_claim"] == stored_to_claim, "Should be same as argument passed to update_claim_after_sweep"
+    assert "claimed" not in public_payment_claim_doc_ref.get().to_dict().keys()
+
+@pytest.mark.asyncio
+async def test_to_claim_throws_when_too_much_claimed():
     """Test to make sure update_claim_after_sweep throws on negative to_claim"""
 
     db = mockito.spy(mockfirestore.MockFirestore())
