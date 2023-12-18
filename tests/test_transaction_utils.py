@@ -432,6 +432,28 @@ async def test_to_claim_throws_when_too_much_claimed():
         )
 
 @pytest.mark.asyncio
+async def test_nothing_updated_when_claimed_equals_to_claim():
+    """Test to make sure document skipped"""
+
+    # Create a mock for the transaction
+    transaction_mock = mockito.mock()
+    to_claim = 10
+
+    # Mock the Firestore query
+    private_ref_mock = "private_ref_mock"
+    private_doc_mock = mockito.mock()
+    private_doc_mock.exists = True
+    transaction_mock._max_attempts = 1
+    mockito.when(transaction_mock).get(private_ref_mock).thenReturn(iter([private_doc_mock]))
+    mockito.when(private_doc_mock).get('to_claim').thenReturn(to_claim)
+
+    # Call the transactional function
+    dtx._transactional_update_claim_after_sweep(transaction_mock, private_ref_mock, to_claim)
+
+    # Verify that transaction.update was not called
+    mockito.verify(transaction_mock, times=0).update(...)
+
+@pytest.mark.asyncio
 async def test_payment_claim_estimate_fails():
     """Test to make sure that validate_estimated_claim raises 402"""
 
