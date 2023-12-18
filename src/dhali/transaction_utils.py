@@ -32,6 +32,8 @@ def _transactional_update_claim_after_sweep(transaction, private_ref, to_claim) 
     new_value = current_value - to_claim
     if new_value < 0:
         raise Exception("Attempting to claim more than should be claimed")
+    if new_value == 0:
+        return
     transaction.update(private_ref, {'claimed': to_claim})
 
 
