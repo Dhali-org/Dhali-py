@@ -34,7 +34,6 @@ def _transactional_update_claim_after_sweep(transaction, private_ref, to_claim) 
     if "claimed" in private_doc_dict:
         current_claimed = private_doc_dict["claimed"]
 
-    delta = current_to_claim - to_claim
     if current_to_claim - to_claim < 0:
         raise Exception("Attempting to claim more than should be claimed")
     if current_claimed - to_claim == 0:
