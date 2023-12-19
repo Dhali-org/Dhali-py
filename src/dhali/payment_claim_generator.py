@@ -9,7 +9,7 @@ import json
 client = JsonRpcClient("https://s.altnet.rippletest.net:51234/")
 # TODO : We may want to make these CLI arguments in the future
 cancel_after = 1000
-settle_delay = 15768000
+settle_delay = 1209600
 
 def get_xrpl_wallet():
     return generate_faucet_wallet(client)
@@ -64,7 +64,7 @@ def get_xrpl_payment_claim(source_wallet_secret: str, destination_classic_addres
         correct_src = channel["account"] == source_wallet.classic_address
         correct_dst = channel["destination_account"] == destination_classic_address
         correct_ant = channel["amount"] == total_xrp_in_channel
-        correct_del = channel["settle_delay"] == settle_delay
+        correct_del = channel["settle_delay"] >= settle_delay
         channel_expired = "cancel_after" in channel.keys()
         if (
             correct_src
