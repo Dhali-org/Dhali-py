@@ -209,7 +209,7 @@ def get_channel_dict(parsed_claim, ledger_client, settle_delay):
             detail=f"There were no valid claims found for the specified channel",
         )
     for channel in account_channels_response.to_dict()["result"]["channels"]:
-        correct_del = channel["settle_delay"] == settle_delay
+        correct_del = channel["settle_delay"] >= settle_delay
         correct_src = channel["account"] == parsed_claim["account"]
         correct_dst = (
             channel["destination_account"] == parsed_claim["destination_account"]
@@ -491,7 +491,7 @@ async def store_exact_claim(
 
 
 async def validate_claim(
-    client, claim, single_request_cost_estimate: int, db, destination_account: str, settle_delay=15768000
+    client, claim, single_request_cost_estimate: int, db, destination_account: str, settle_delay=1209600
 ):
     """
     Parameters
@@ -573,7 +573,7 @@ async def validate_claim(
 
 
 async def throw_if_claim_invalid(
-    client, claim, single_request_cost_estimate: int, db, destination_account: str, settle_delay=15768000,
+    client, claim, single_request_cost_estimate: int, db, destination_account: str, settle_delay=1209600,
     rate_limiter = RateLimiter()
 ):
     """
