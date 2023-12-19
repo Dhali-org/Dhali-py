@@ -107,7 +107,7 @@ async def test_payment_claim_updated():
                         "destination_account": claim["destination_account"],
                         "public_key": "aKEEmUpJxWmbJKb1W1vmPjpLTv8DxMMX6FBpfKXFCkzQNVNkDVhF",
                         "public_key_hex": "ED404F8DD7B7BFB0427032A6B7346C18972F713C2EA7C4477F52F5968477AEA69C",
-                        "settle_delay": 15768000,
+                        "settle_delay": 1209600,
                     }
                 ],
                 "ledger_current_index": 32474977,
@@ -125,7 +125,7 @@ async def test_payment_claim_updated():
                         "destination_account": updated_claim["destination_account"],
                         "public_key": "aKEEmUpJxWmbJKb1W1vmPjpLTv8DxMMX6FBpfKXFCkzQNVNkDVhF",
                         "public_key_hex": "ED404F8DD7B7BFB0427032A6B7346C18972F713C2EA7C4477F52F5968477AEA69C",
-                        "settle_delay": 15768000,
+                        "settle_delay": 1209600,
                     }
                 ],
                 "ledger_current_index": 32474977,
@@ -574,7 +574,7 @@ async def test_payment_claim_estimate_and_exact():
                         "destination_account": claim["destination_account"],
                         "public_key": "aKEEmUpJxWmbJKb1W1vmPjpLTv8DxMMX6FBpfKXFCkzQNVNkDVhF",
                         "public_key_hex": "ED404F8DD7B7BFB0427032A6B7346C18972F713C2EA7C4477F52F5968477AEA69C",
-                        "settle_delay": 15768000,
+                        "settle_delay": 1209600,
                     }
                 ],
                 "ledger_current_index": 32474977,
