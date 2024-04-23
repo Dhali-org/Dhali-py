@@ -37,7 +37,7 @@ Install and run
 
 3. To generate a Dhali payment claim::
 
-        dhali create-xrpl-payment-claim -s <secret from 2.> -a 10000000 -t 100000000
+        dhali create-xrpl-payment-claim -s <secret from 2.> -a 500000 -t 1000000
 
 
 .. _pyscaffold-notes:
