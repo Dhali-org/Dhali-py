@@ -2,7 +2,7 @@
 from xrpl.clients import JsonRpcClient
 from xrpl.models.transactions import PaymentChannelCreate
 import xrpl
-from xrpl.wallet import generate_faucet_wallet, Wallet
+from xrpl.wallet import Wallet
 import json
 
 import requests
@@ -13,14 +13,12 @@ url = "https://raw.githubusercontent.com/Dhali-org/Dhali-config/master/public.pr
 response = requests.get(url)
 # Parse the JSON content
 data = response.json()
-# Extract the DHALI_PUBLIC_ADDRESS value
+# Extract the DHALI_PUBLIC_ADDRESS and XRPL_NODE_HTTPS_NODE values
 dhali_public_address = data["DHALI_PUBLIC_ADDRESS"]
-client = JsonRpcClient("https://s.altnet.rippletest.net:51234/")
+client = JsonRpcClient(data["XRPL_NODE_HTTPS_NODE"])
 cancel_after = 1000
 settle_delay = 1209600
 
-def get_xrpl_wallet():
-    return generate_faucet_wallet(client)
 
 def get_xrpl_payment_claim(source_wallet_secret: str, auth_claim_amount: str, total_xrp_in_channel: str):
     ###################################################################
@@ -104,11 +102,6 @@ def get_xrpl_payment_claim(source_wallet_secret: str, auth_claim_amount: str, to
 
     return dhali_payment_claim
 
-def print_xrpl_wallet(args):
-    wallet = get_xrpl_wallet()
-    print("classic_address: ", wallet.classic_address)
-    print("secret_seed: ", wallet.seed)
-
 
 def print_xrpl_payment_claim(args):
     print(json.dumps(get_xrpl_payment_claim(source_wallet_secret=args.source_secret,
@@ -126,9 +119,6 @@ def cli():
     create_xrpl_payment_claim_parser.add_argument('-a', '--auth_claim_amount', help="Amount (in drops) that claim authorises to be extracted from the channel (must be less than --total_amount_contained_in_channel)")
     create_xrpl_payment_claim_parser.add_argument('-t', '--total_amount_contained_in_channel', help="Total drops to escrow in the channel (must be less than total  amount of XRP in wallet)")
     create_xrpl_payment_claim_parser.set_defaults(func=print_xrpl_payment_claim)
-
-    create_xrpl_wallet_parser = subparsers.add_parser("create-xrpl-wallet")
-    create_xrpl_wallet_parser.set_defaults(func=print_xrpl_wallet)
 
     args = parser.parse_args()
     if hasattr(args, "func"):
