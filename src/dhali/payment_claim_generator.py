@@ -8,7 +8,7 @@ import json
 import requests
 
 # URL of the raw JSON content
-url = "https://raw.githubusercontent.com/Dhali-org/Dhali-app/develop/assets/public.json"
+url = "https://raw.githubusercontent.com/Dhali-org/Dhali-config/master/public.prod.json"
 # Make a GET request to fetch the raw JSON content
 response = requests.get(url)
 # Parse the JSON content
