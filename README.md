@@ -8,70 +8,76 @@ A Python library for managing XRPL payment channels and generating auth tokens (
 
 ---
 
-## Features
-
-- **Create** or **fund** an XRP Payment Channel on Mainnet  
-- **Generate** a base64-encoded payment claim (auth token)  
-- **Local signing** with your xrpl-py `Wallet` (no external key exposure)
-
----
-
 ## Installation
 
 ```bash
 pip install dhali-py
-````
-
----
-
-## Quick Start
-
-```python
-import json
-import requests
-
-from dhali import ChannelNotFound, DhaliChannelManager
-from xrpl.wallet import Wallet
-
-# 1. Load your wallet from secret
-seed = "sXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
-wallet = Wallet.from_secret(seed=seed)
-
-# 2. Create the manager (uses Mainnet JSON-RPC by default)
-dhali_manager = DhaliChannelManager(wallet)
-
-def get_payment_claim():
-    try:
-        # Get an auth token
-        return dhali_manager.get_auth_token()
-    except ChannelNotFound:
-        # If no channel exists, create one with 1 XRP
-        dhali_manager.deposit(1_000_000)
-        return dhali_manager.get_auth_token()
-
-# 3. Use the token to call a Dhali-compatible endpoint
-for _ in range(2):
-    token = get_payment_claim()
-    url = f"https://xrplcluster.dhali.io?payment-claim={token}"
-    payload = {
-        "method": "account_info",
-        "params": [{"account": wallet.classic_address, "ledger_index": "validated"}],
-        "id": 1,
-    }
-    resp = requests.post(url, data=json.dumps(payload))
-
-    if resp.status_code == 402:
-        # Insufficient claim amount? Top up and retry.
-        dhali_manager.deposit(1_000_000)
-    else:
-        break
-
-print("Result:", resp.json())
 ```
 
 ---
 
-## API Reference
+## Quick Start (Python)
+
+```python
+# ==== 0. Common setup ====
+from dhali import ChannelNotFound, DhaliChannelManager
+from xrpl.wallet import Wallet
+
+seed    = "sXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+wallet  = Wallet.from_secret(seed=seed)
+manager = DhaliChannelManager(wallet)
+```
+
+
+### 1. Create a Payment Claim
+
+```python
+try:
+    claim = manager.get_auth_token()
+except ChannelNotFound:
+    manager.deposit(1_000_000)          # deposit 1 XRP
+    claim = manager.get_auth_token()    # 🔑 regenerate after deposit
+
+print("New claim:", claim)
+```
+
+### 2. Top Up Later (and Regenerate)
+
+```python
+manager.deposit(2_000_000)               # add 2 XRP
+updated_claim = manager.get_auth_token()
+print("Updated claim:", updated_claim)
+```
+
+---
+
+### 3. Using APIs and Handling 402 "Payment Required" Errors
+
+```python
+import json, requests
+
+def call_with_claim(max_retries=5):
+    for i in range(1, max_retries+1):
+        claim = manager.get_auth_token()
+        url   = f"https://xrplcluster.dhali.io?payment-claim={claim}"
+        resp  = requests.post(url, data=json.dumps({/*…RPC…*/}))
+
+        if resp.status_code != 402:
+            return resp
+
+        print(f"Attempt {i}: topping up…")
+        manager.deposit(1_000_000)       # deposit 1 XRP
+
+    raise RuntimeError(f"402 after {max_retries} retries")
+
+response = call_with_claim()
+print("Result:", response.json())
+```
+
+---
+
+
+## Class reference
 
 ### `DhaliChannelManager(wallet: xrpl.wallet.Wallet)`
 
