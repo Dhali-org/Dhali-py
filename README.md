@@ -4,7 +4,9 @@
 
 # dhali-py
 
-A Python library for managing XRPL payment channels and generating auth tokens (i.e., payment-claims) for use with [Dhali](https://dhali.io) APIs. Leverages [xrpl-py](https://github.com/XRPLF/xrpl-py) and **only ever performs local signing**—your private key never leaves your environment.
+A Python library for managing payment channels (XRPL & Ethereum) and generating auth tokens (i.e., payment-claims) for use with [Dhali](https://dhali.io) APIs. 
+
+Includes support for **Machine-to-Machine (M2M) payments** using seamless off-chain claims.
 
 ---
 
@@ -16,113 +18,127 @@ pip install dhali-py
 
 ---
 
-## Quick Start (Python)
+## Quick Start: Machine-to-Machine Payments
+
+### 1. XRPL
+
+All signing is performed locally using `xrpl-py`.
 
 ```python
-# ==== 0. Common setup ====
-from dhali import ChannelNotFound, DhaliChannelManager
+from dhali.dhali_channel_manager import DhaliChannelManager, ChannelNotFound
+from dhali.config_utils import get_available_dhali_currencies
 from xrpl.wallet import Wallet
+from xrpl.clients import JsonRpcClient
 
 seed    = "sXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
 wallet  = Wallet.from_secret(seed=seed)
-manager = DhaliChannelManager(wallet)
-```
+rpc_client = JsonRpcClient("https://testnet.xrpl-labs.com/")
 
+currencies = get_available_dhali_currencies()
+xrpl_testnet = currencies["XRPL.TESTNET"]["XRP"]
 
-### 1. Create a Payment Claim
+# Use the Factory to get an XRPL Manager
+manager = DhaliChannelManager.xrpl(
+    wallet=wallet, 
+    rpc_client=rpc_client, 
+    protocol="XRPL.TESTNET", 
+    currency=xrpl_testnet.currency
+)
 
-```python
+# Generate a claim (Base64 encoded)
 try:
     claim = manager.get_auth_token()
 except ChannelNotFound:
     manager.deposit(1_000_000)          # deposit 1 XRP
     claim = manager.get_auth_token()    # 🔑 regenerate after deposit
-
-print("New claim:", claim)
+print("XRPL Claim:", claim)
 ```
 
-### 2. Top Up Later (and Regenerate)
+### 2. Ethereum (EVM)
+
+Supports Ethereum, Sepolia, Holesky, etc. Requires `eth-account` and `web3.py`.
 
 ```python
-manager.deposit(2_000_000)               # add 2 XRP
-updated_claim = manager.get_auth_token()
-print("Updated claim:", updated_claim)
+from dhali.dhali_channel_manager import DhaliChannelManager, ChannelNotFound
+from dhali.config_utils import get_available_dhali_currencies
+from eth_account import Account
+from web3 import Web3
+
+# 1. Setup Account & Provider
+private_key = "0x..."
+account = Account.from_key(private_key)
+w3 = Web3(Web3.HTTPProvider("https://ethereum-sepolia.publicnode.com"))
+
+# 2. Fetch Available Currencies
+currencies = get_available_dhali_currencies()
+sepolia_rlusd = currencies["SEPOLIA"]["RLUSD"] # or "USDC"
+
+# 3. Instantiate Manager with Dynamic Config
+manager = DhaliChannelManager.evm(
+    account=account,
+    w3=w3,
+    protocol="SEPOLIA",
+    currency=sepolia_rlusd.currency
+)
+
+# 4. Generate EIP-712 Signed Claim
+# Note: For RLUSD (18 decimals), 1 unit = 10^18. For USDC (6 decimals), 1 unit = 10^6.
+amount = int(0.1 * 10**sepolia_rlusd.currency.scale) # 0.01 RLUSD
+
+try:
+    claim = manager.get_auth_token() 
+except ChannelNotFound:
+    manager.deposit(amount)
+    claim = manager.get_auth_token(amount=amount) 
+print("EVM Claim:", claim)
 ```
 
 ---
 
-### 3. Using APIs and Handling 402 "Payment Required" Errors
+## Usage in API Calls
+
+Once you have the claim string, include it in your API request query parameters or headers as required by the Dhali Gateway.
 
 ```python
-import json, requests
+import requests
 
-def call_with_claim(max_retries=5):
-    for i in range(1, max_retries+1):
-        claim = manager.get_auth_token()
-        url   = f"https://xrplcluster.dhali.io?payment-claim={claim}"
-        resp  = requests.post(url, data=json.dumps({/*…RPC…*/}))
+url = f"https://xrplcluster.dhali.io?payment-claim={claim}"
+response = requests.post(url, json={"data": "..."})
 
-        if resp.status_code != 402:
-            return resp
-
-        print(f"Attempt {i}: topping up…")
-        manager.deposit(1_000_000)       # deposit 1 XRP
-
-    raise RuntimeError(f"402 after {max_retries} retries")
-
-response = call_with_claim()
-print("Result:", response.json())
+if response.status_code == 402:
+    print("Payment Required: Channel may need topping up.")
 ```
 
 ---
 
+## Classes
 
-## Class reference
+### `DhaliChannelManager` (Factory)
 
-### `DhaliChannelManager(wallet: xrpl.wallet.Wallet)`
+* `xrpl(wallet, rpc_client, protocol, currency, client=None, public_config=None) -> DhaliXrplChannelManager`
+* `evm(account, w3, protocol, currency, client=None, public_config=None) -> DhaliEthChannelManager`
 
-Constructor.
+### `get_available_dhali_currencies()`
 
-* **wallet**: an `xrpl-py` `Wallet` instance loaded from your secret.
+Fetches current Dhali configuration and returns a dict:
+```python
+{
+    "SEPOLIA": {
+        "USDC": NetworkCurrencyConfig(currency=..., destination_address=...),
+        ...
+    },
+    ...
+}
+```
 
----
-
-### `deposit(amount_drops: int) → dict`
-
-* **amount\_drops**
-  Number of XRP drops to deposit (e.g. `1_000_000` = 1 XRP).
-* **Returns**
-  The JSON result of the `PaymentChannelCreate` or `PaymentChannelFund` transaction.
-
----
-
-### `get_auth_token(amount_drops: Optional[int] = None) → str`
-
-* **amount\_drops** (optional)
-  How many drops to authorize in this claim. If omitted, uses the full channel balance.
-* **Returns**
-  A base64-encoded JSON string containing your signed claim (`version`, `account`, `protocol`, `currency`, `authorized_to_claim`, `channel_id`, `signature`, etc.).
-* **Raises**
-
-  * `ChannelNotFound` if no open channel exists
-  * `ValueError` if `amount_drops` exceeds the channel’s capacity
+Here’s a clean, minimal addition you can append near the end of the README (for example, just before the “Classes” section or after it):
 
 ---
 
-## Errors
+## Async Workflows
 
-* **ChannelNotFound**
-  Thrown when you call `get_auth_token` but no channel exists from your wallet to Dhali’s receiver.
-* **ValueError**
-  Thrown when you request more drops than the current channel balance.
+Currently, `dhali-py` provides a synchronous interface for managing payment channels and generating claims.
 
----
-
-## Security & Signing
-
-* **Local Signing Only**
-  All XRPL transactions and auth-claim signatures are generated locally via `xrpl-py`.
-* **No External Key Exposure**
-  Your private key is never sent over the network or stored externally.
+If you would like to see **native async/await support** (e.g., `async` workflows using `asyncio`, async Web3 providers, or async XRPL clients), please drop us a message and let us know. Community feedback helps us prioritise features 🚀
 
 ---
