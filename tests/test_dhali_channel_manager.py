@@ -2,8 +2,9 @@ import base64
 import json
 import pytest
 from types import SimpleNamespace
-import dhali.dhali_channel_manager as manager_module
-from dhali import DhaliChannelManager, ChannelNotFound
+from unittest.mock import MagicMock, patch, ANY
+import dhali.dhali_xrpl_channel_manager as manager_module
+from dhali import DhaliXrplChannelManager as DhaliChannelManager, ChannelNotFound
 import dhali.create_signed_claim as create_signed_claim
 
 
@@ -20,22 +21,97 @@ def wallet():
 
 
 @pytest.fixture
-def manager(wallet):
-    return DhaliChannelManager(wallet)
+def rpc_client():
+    client = MagicMock()
+    client.url = "https://s1.ripple.com:51234/"
+    return client
 
 
-def test_init_sets_defaults(wallet):
-    mgr = DhaliChannelManager(wallet)
-    assert mgr.wallet is wallet
-    assert mgr.protocol == "XRPL.MAINNET"
-    assert hasattr(mgr.client, "request")
-    assert getattr(mgr.client, "url", None) == "https://s1.ripple.com:51234/"
+@pytest.fixture
+def currency():
+    from dhali.currency import Currency
+
+    return Currency("XRP", 6)
+
+
+@pytest.fixture
+def public_config():
+    return {
+        "DHALI_PUBLIC_ADDRESSES": {
+            "XRPL.MAINNET": {"XRP": {"wallet_id": "rnDestination"}}
+        }
+    }
+
+
+@pytest.fixture
+def manager(wallet, rpc_client, currency, public_config):
+    mock_query = MagicMock()
+    return DhaliChannelManager(
+        wallet=wallet,
+        rpc_client=rpc_client,
+        protocol="XRPL.MAINNET",
+        currency=currency,
+        http_client=mock_query,
+        public_config=public_config,
+    )
+
+
+def test_init_sets_defaults(wallet, rpc_client, currency, public_config):
+    mock_query = MagicMock()
+    manager = DhaliChannelManager(
+        wallet,
+        rpc_client,
+        "XRPL.MAINNET",
+        currency,
+        http_client=mock_query,
+        public_config=public_config,
+    )
+    assert manager.wallet == wallet
+    assert manager.rpc_client == rpc_client
+    assert manager.currency == currency
+    assert manager.http_client == mock_query
+    assert manager.public_config == public_config
+    assert manager.destination == "rnDestination"
+
+
+def test_init_without_http_client(wallet, rpc_client, currency, public_config):
+    import requests
+    manager = DhaliChannelManager(
+        wallet=wallet,
+        rpc_client=rpc_client,
+        protocol="XRPL.MAINNET",
+        currency=currency,
+        http_client=None,
+        public_config=public_config,
+    )
+    assert manager.http_client == requests
+
+@patch("dhali.dhali_xrpl_channel_manager.query_public_claim_info_rest")
+def test_firestore_query_uses_default_http_client(mock_rest, wallet, rpc_client, currency, public_config):
+    import requests
+    manager = DhaliChannelManager(
+        wallet=wallet,
+        rpc_client=rpc_client,
+        protocol="XRPL.MAINNET",
+        currency=currency,
+        http_client=None,
+        public_config=public_config,
+    )
+    mock_rest.return_value = "CHAN_REST"
+    
+    result = manager._retrieve_channel_id_from_firestore()
+    assert result == "CHAN_REST"
+    mock_rest.assert_called_once_with(
+        "XRPL.MAINNET", ANY, wallet.classic_address, http_client=requests
+    )
 
 
 def test_find_channel_success(monkeypatch, manager):
     fake_channel = {"channel_id": "CHAN123", "amount": "1000"}
+    # Mock Firestore to return the specific ID
+    monkeypatch.setattr(manager, "_retrieve_channel_id_from_firestore", lambda: "CHAN123")
     monkeypatch.setattr(
-        manager.client,
+        manager.rpc_client,
         "request",
         lambda req: SimpleNamespace(result={"channels": [fake_channel]}),
     )
@@ -44,14 +120,43 @@ def test_find_channel_success(monkeypatch, manager):
 
 
 def test_find_channel_raises_when_no_channels(monkeypatch, manager, wallet):
+    monkeypatch.setattr(manager, "_retrieve_channel_id_from_firestore", lambda: None)
     monkeypatch.setattr(
-        manager.client, "request", lambda req: SimpleNamespace(result={"channels": []})
+        manager.rpc_client,
+        "request",
+        lambda req: SimpleNamespace(result={"channels": []}),
     )
     with pytest.raises(ChannelNotFound) as excinfo:
         manager._find_channel()
     msg = str(excinfo.value)
     assert wallet.classic_address in msg
     assert manager.destination in msg
+
+def test_find_channel_raises_channel_not_found_when_firestore_empty(monkeypatch, manager, wallet):
+    # Mock _retrieve_channel_id_from_firestore to return None
+    monkeypatch.setattr(manager, "_retrieve_channel_id_from_firestore", lambda: None)
+    
+    with pytest.raises(ChannelNotFound) as excinfo:
+        manager._find_channel()
+    msg = str(excinfo.value)
+    assert wallet.classic_address in msg
+    assert manager.destination in msg
+
+
+def test_find_channel_raises_on_firestore_id_mismatch(monkeypatch, manager, wallet):
+    # Firestore returns one ID
+    monkeypatch.setattr(manager, "_retrieve_channel_id_from_firestore", lambda: "FIRESTORE_ID")
+    # XRPL returns a different ID
+    fake_channel = {"channel_id": "XRPL_ID", "amount": "1000"}
+    monkeypatch.setattr(
+        manager.rpc_client,
+        "request",
+        lambda req: SimpleNamespace(result={"channels": [fake_channel]}),
+    )
+    with pytest.raises(ChannelNotFound) as excinfo:
+        manager._find_channel()
+    assert "FIRESTORE_ID" in str(excinfo.value)
+    assert "not found on-chain" in str(excinfo.value)
 
 
 def test_deposit_funds_existing_channel(monkeypatch, manager, wallet):
@@ -137,7 +242,7 @@ def test_get_auth_token_with_specific_amount(monkeypatch, manager, wallet):
     )
     monkeypatch.setattr(manager_module, "sign", lambda claim, priv_key: "SIG2")
 
-    token = manager.get_auth_token(amount_drops=200)
+    token = manager.get_auth_token(amount=200)
     decoded = base64.b64decode(token).decode("utf-8")
     data = json.loads(decoded)
     assert data["authorized_to_claim"] == "200"
@@ -147,7 +252,7 @@ def test_get_auth_token_amount_exceeds(monkeypatch, manager):
     fake_channel = {"channel_id": "XCHAN", "amount": "100"}
     monkeypatch.setattr(manager, "_find_channel", lambda: fake_channel)
     with pytest.raises(ValueError) as excinfo:
-        manager.get_auth_token(amount_drops=200)
+        manager.get_auth_token(amount=200)
     assert "exceeds channel capacity" in str(excinfo.value)
 
 
@@ -155,3 +260,6 @@ def test_build_paychan_auth_hex_string_to_be_signed_invalid_hex():
     with pytest.raises(Exception) as excinfo:
         create_signed_claim.build_paychan_auth_hex_string_to_be_signed("CHANID", "200")
     assert "Invalid channelId hex." in str(excinfo.value)
+
+
+

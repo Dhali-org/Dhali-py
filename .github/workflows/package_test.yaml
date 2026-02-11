@@ -32,3 +32,9 @@ jobs:
 
       - name: Run pytest
         run: pytest
+
+      - name: Install mypy
+        run: pip install mypy types-requests
+
+      - name: Run mypy
+        run: mypy src/dhali
