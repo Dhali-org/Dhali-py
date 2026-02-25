@@ -109,6 +109,25 @@ if response.status_code == 402:
     print("Payment Required: Channel may need topping up.")
 ```
 
+## Standardized x402 Payments
+
+For APIs that follow the x402 standard, you must wrap your auth token (claim) with the payment requirement (retrieved from the `payment-required` header of a 402 response).
+
+```python
+from dhali import wrap_as_x402_payment_payload
+
+# 1. Get your claim as usual
+claim = manager.get_auth_token()
+
+# 2. Get the payment requirement from the 'payment-required' header of a 402 response
+payment_requirement = response.headers.get("payment-required") 
+
+# 3. Wrap into an x402 payload
+x402_payload = wrap_as_x402_payment_payload(claim, payment_requirement)
+
+# 4. Use 'x402_payload' in the 'Payment' header
+```
+
 ---
 
 ## Classes
