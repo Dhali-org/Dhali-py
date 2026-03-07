@@ -22,14 +22,13 @@ class TestConfigUtils(unittest.TestCase):
         mock_get.return_value = mock_resp
 
         configs = get_available_dhali_currencies()
-        self.assertIn("TEST_NET", configs)
-        self.assertIn("TEST_TOKEN", configs["TEST_NET"])
+        self.assertEqual(len(configs), 1)
 
-        cfg = configs["TEST_NET"]["TEST_TOKEN"]
-        self.assertEqual(cfg.destination_address, "dest123")
-        self.assertEqual(cfg.currency.code, "TEST_TOKEN")
-        self.assertEqual(cfg.currency.scale, 9)
-        self.assertEqual(cfg.currency.token_address, "iss123")
+        cfg = configs[0]
+        self.assertEqual(cfg.network, "TEST_NET")
+        self.assertEqual(cfg.code, "TEST_TOKEN")
+        self.assertEqual(cfg.scale, 9)
+        self.assertEqual(cfg.token_address, "iss123")
 
     @patch("dhali.config_utils.requests.post")
     def test_query_public_claim_info_rest_success(self, mock_post):

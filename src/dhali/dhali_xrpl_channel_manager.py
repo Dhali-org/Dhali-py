@@ -33,14 +33,12 @@ class DhaliXrplChannelManager(PaymentChannelManager):
         self,
         wallet: Wallet,
         rpc_client: JsonRpcClient,
-        protocol: str,
         currency: Currency,
         http_client: Optional[Any] = requests,
         public_config: Optional[Dict[str, Any]] = None,
     ):
         self.wallet = wallet
         self.rpc_client = rpc_client
-        self.protocol = protocol
         self.currency = currency
         self.http_client = http_client or requests
         self.public_config = public_config or get_public_config(
@@ -50,7 +48,7 @@ class DhaliXrplChannelManager(PaymentChannelManager):
         # Resolve destination address
         try:
             self.destination = self.public_config["DHALI_PUBLIC_ADDRESSES"][
-                self.protocol
+                self.currency.network
             ][self.currency.code]["wallet_id"]
         except (KeyError, TypeError):
             raise ValueError(
@@ -65,7 +63,7 @@ class DhaliXrplChannelManager(PaymentChannelManager):
             )
 
         return query_public_claim_info_rest(
-            self.protocol,
+            self.currency.network,
             currency_identifier,
             self.wallet.classic_address,
             http_client=self.http_client,
@@ -138,7 +136,7 @@ class DhaliXrplChannelManager(PaymentChannelManager):
                             )
 
                         notify_admin_gateway(
-                            self.protocol,
+                            self.currency.network,
                             currency_identifier,
                             self.wallet.classic_address,
                             channel_id,
@@ -163,7 +161,7 @@ class DhaliXrplChannelManager(PaymentChannelManager):
         claim_dict = {
             "version": "2",
             "account": self.wallet.classic_address,
-            "protocol": self.protocol,
+            "protocol": self.currency.network,
             "currency": {"code": "XRP", "scale": 6},
             "destination_account": self.destination,
             "authorized_to_claim": str(allowed),

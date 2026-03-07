@@ -31,7 +31,7 @@ def rpc_client():
 def currency():
     from dhali.currency import Currency
 
-    return Currency("XRP", 6)
+    return Currency("XRPL.MAINNET", "XRP", 6)
 
 
 @pytest.fixture
@@ -49,7 +49,6 @@ def manager(wallet, rpc_client, currency, public_config):
     return DhaliChannelManager(
         wallet=wallet,
         rpc_client=rpc_client,
-        protocol="XRPL.MAINNET",
         currency=currency,
         http_client=mock_query,
         public_config=public_config,
@@ -61,7 +60,6 @@ def test_init_sets_defaults(wallet, rpc_client, currency, public_config):
     manager = DhaliChannelManager(
         wallet,
         rpc_client,
-        "XRPL.MAINNET",
         currency,
         http_client=mock_query,
         public_config=public_config,
@@ -79,7 +77,7 @@ def test_init_without_http_client(wallet, rpc_client, currency, public_config):
     manager = DhaliChannelManager(
         wallet=wallet,
         rpc_client=rpc_client,
-        protocol="XRPL.MAINNET",
+
         currency=currency,
         http_client=None,
         public_config=public_config,
@@ -92,7 +90,7 @@ def test_firestore_query_uses_default_http_client(mock_rest, wallet, rpc_client,
     manager = DhaliChannelManager(
         wallet=wallet,
         rpc_client=rpc_client,
-        protocol="XRPL.MAINNET",
+
         currency=currency,
         http_client=None,
         public_config=public_config,
@@ -102,7 +100,7 @@ def test_firestore_query_uses_default_http_client(mock_rest, wallet, rpc_client,
     result = manager._retrieve_channel_id_from_firestore()
     assert result == "CHAN_REST"
     mock_rest.assert_called_once_with(
-        "XRPL.MAINNET", ANY, wallet.classic_address, http_client=requests
+        manager.currency.network, ANY, wallet.classic_address, http_client=requests
     )
 
 
@@ -223,7 +221,7 @@ def test_get_auth_token_success_default_amount(monkeypatch, manager, wallet):
     data = json.loads(decoded)
     assert data["version"] == "2"
     assert data["account"] == wallet.classic_address
-    assert data["protocol"] == manager.protocol
+    assert data["protocol"] == manager.currency.network
     assert data["currency"]["code"] == "XRP"
     assert data["currency"]["scale"] == 6
     assert data["destination_account"] == manager.destination

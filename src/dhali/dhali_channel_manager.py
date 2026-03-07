@@ -16,7 +16,6 @@ class DhaliChannelManager:
     def xrpl(
         wallet: Any,
         rpc_client: Any,
-        protocol: str,
         currency: Currency,
         http_client: Optional[Any] = None,
         public_config: Optional[Dict[str, Any]] = None,
@@ -24,7 +23,6 @@ class DhaliChannelManager:
         return DhaliXrplChannelManager(
             wallet=wallet,
             rpc_client=rpc_client,
-            protocol=protocol,
             currency=currency,
             http_client=http_client,
             public_config=public_config,
@@ -34,7 +32,6 @@ class DhaliChannelManager:
     def evm(
         account: Any,
         w3: Any,
-        protocol: str,
         currency: Currency,
         http_client: Optional[Any] = None,
         public_config: Optional[Dict[str, Any]] = None,
@@ -42,7 +39,6 @@ class DhaliChannelManager:
         return DhaliEthChannelManager(
             account=account,
             w3=w3,
-            protocol=protocol,
             currency=currency,
             http_client=http_client,
             public_config=public_config,

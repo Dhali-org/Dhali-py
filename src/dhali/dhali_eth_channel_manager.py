@@ -25,25 +25,23 @@ class DhaliEthChannelManager(PaymentChannelManager):
         self,
         account: LocalAccount,
         w3: Web3,
-        protocol: str,
         currency: Currency,
         http_client: Optional[Any] = requests,
         public_config: Optional[Dict[str, Any]] = None,
     ):
         self.account = account
         self.w3 = w3
-        self.protocol = protocol
         self.currency = currency
         self.http_client = http_client or requests
         self.public_config = public_config or get_public_config(
             http_client=self.http_client
         )
-        self.chain_id = self._get_chain_id_from_protocol(protocol)
+        self.chain_id = self._get_chain_id_from_protocol(self.currency.network)
 
         # Resolve destination address from config
         try:
             self.destination_address = self.public_config["DHALI_PUBLIC_ADDRESSES"][
-                self.protocol
+                self.currency.network
             ][self.currency.code]["wallet_id"]
         except (KeyError, TypeError):
             raise ValueError(
@@ -52,7 +50,7 @@ class DhaliEthChannelManager(PaymentChannelManager):
 
         # Resolve contract address from config
         try:
-            self.contract_address = self.public_config["CONTRACTS"][self.protocol][
+            self.contract_address = self.public_config["CONTRACTS"][self.currency.network][
                 "contract_address"
             ]
         except (KeyError, TypeError):
@@ -62,7 +60,7 @@ class DhaliEthChannelManager(PaymentChannelManager):
 
         if not self.contract_address:
             raise ValueError(
-                f"Contract address must be provided or resolved for protocol: {self.protocol}"
+                f"Contract address must be provided or resolved for protocol: {self.currency.network}"
             )
 
     def _get_chain_id_from_protocol(self, protocol: str) -> int:
@@ -76,9 +74,6 @@ class DhaliEthChannelManager(PaymentChannelManager):
             raise ValueError(f"Unsupported protocol: {protocol}")
         return mapping[protocol]
 
-    def _get_protocol_name(self) -> str:
-        return self.protocol
-
     def _retrieve_channel_id_from_firestore(self) -> Optional[str]:
         currency_identifier = self.currency.code
         if self.currency.token_address:
@@ -87,7 +82,7 @@ class DhaliEthChannelManager(PaymentChannelManager):
             )
 
         return query_public_claim_info_rest(
-            self.protocol,
+            self.currency.network,
             currency_identifier,
             self.account.address.lower(),
             http_client=self.http_client,
@@ -215,7 +210,7 @@ class DhaliEthChannelManager(PaymentChannelManager):
                 )
 
             notify_admin_gateway(
-                self.protocol,
+                self.currency.network,
                 currency_identifier,
                 self.account.address.lower(),
                 calculated_channel_id,
@@ -342,7 +337,7 @@ class DhaliEthChannelManager(PaymentChannelManager):
         claim = {
             "version": "2",
             "account": self.account.address,
-            "protocol": self.protocol,
+            "protocol": self.currency.network,
             "currency": {
                 "code": self.currency.code,
                 "scale": self.currency.scale,
