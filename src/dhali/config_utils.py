@@ -1,5 +1,5 @@
 import requests
-from typing import Dict, Any, NamedTuple, Optional
+from typing import Dict, Any, NamedTuple, Optional, List
 from dhali.currency import Currency
 
 
@@ -8,13 +8,12 @@ class NetworkCurrencyConfig(NamedTuple):
     destination_address: str
 
 
-def get_available_dhali_currencies(http_client=requests) -> Dict[str, Dict[str, NetworkCurrencyConfig]]:
+def get_available_dhali_currencies(http_client=requests) -> List[Currency]:
     """
     Fetches and parses available Dhali currencies and configurations.
 
     Returns:
-        A dictionary keyed by network name (e.g., 'XRPL.MAINNET', 'SEPOLIA'), containing
-        dictionaries of currency codes mapped to NetworkCurrencyConfig objects.
+        A list of Currency objects.
     """
     url = "https://raw.githubusercontent.com/Dhali-org/Dhali-config/master/public.prod.json"
     try:
@@ -25,10 +24,9 @@ def get_available_dhali_currencies(http_client=requests) -> Dict[str, Dict[str, 
         raise RuntimeError(f"Failed to fetch Dhali configuration: {e}")
 
     public_addresses = data.get("DHALI_PUBLIC_ADDRESSES", {})
-    result: Dict[str, Any] = {}
+    result: List[Currency] = []
 
     for network, currencies in public_addresses.items():
-        result[network] = {}
         for code, details in currencies.items():
             token_address = details.get(
                 "issuer"
@@ -41,11 +39,8 @@ def get_available_dhali_currencies(http_client=requests) -> Dict[str, Dict[str, 
 
             # Native tokens (no issuer) should have token_address as None
             # The config uses 'issuer' for tokens.
-            curr = Currency(code=code, scale=scale, token_address=token_address)
-
-            result[network][code] = NetworkCurrencyConfig(
-                currency=curr, destination_address=destination
-            )
+            curr = Currency(network=network, code=code, scale=scale, token_address=token_address)
+            result.append(curr)
 
     return result
 

@@ -35,14 +35,14 @@ wallet  = Wallet.from_secret(seed=seed)
 rpc_client = JsonRpcClient("https://testnet.xrpl-labs.com/")
 
 currencies = get_available_dhali_currencies()
-xrpl_testnet = currencies["XRPL.TESTNET"]["XRP"]
+# Select the correct currency from the list
+xrpl_testnet = next(c for c in currencies if c.network == "XRPL.TESTNET" and c.code == "XRP")
 
 # Use the Factory to get an XRPL Manager
 manager = DhaliChannelManager.xrpl(
     wallet=wallet, 
     rpc_client=rpc_client, 
-    protocol="XRPL.TESTNET", 
-    currency=xrpl_testnet.currency
+    currency=xrpl_testnet
 )
 
 # Generate a claim (Base64 encoded)
@@ -71,19 +71,17 @@ w3 = Web3(Web3.HTTPProvider("https://ethereum-sepolia.publicnode.com"))
 
 # 2. Fetch Available Currencies
 currencies = get_available_dhali_currencies()
-sepolia_rlusd = currencies["SEPOLIA"]["RLUSD"] # or "USDC"
+sepolia_rlusd = next(c for c in currencies if c.network == "SEPOLIA" and c.code == "RLUSD") # or "USDC"
 
 # 3. Instantiate Manager with Dynamic Config
 manager = DhaliChannelManager.evm(
     account=account,
     w3=w3,
-    protocol="SEPOLIA",
-    currency=sepolia_rlusd.currency
+    currency=sepolia_rlusd
 )
 
 # 4. Generate EIP-712 Signed Claim
-# Note: For RLUSD (18 decimals), 1 unit = 10^18. For USDC (6 decimals), 1 unit = 10^6.
-amount = int(0.1 * 10**sepolia_rlusd.currency.scale) # 0.01 RLUSD
+amount = int(0.1 * 10**sepolia_rlusd.scale) # 0.1 RLUSD
 
 try:
     claim = manager.get_auth_token() 
@@ -134,20 +132,17 @@ x402_payload = wrap_as_x402_payment_payload(claim, payment_requirement)
 
 ### `DhaliChannelManager` (Factory)
 
-* `xrpl(wallet, rpc_client, protocol, currency, client=None, public_config=None) -> DhaliXrplChannelManager`
-* `evm(account, w3, protocol, currency, client=None, public_config=None) -> DhaliEthChannelManager`
+* `xrpl(wallet, rpc_client, currency, http_client=None, public_config=None) -> DhaliXrplChannelManager`
+* `evm(account, w3, currency, http_client=None, public_config=None) -> DhaliEthChannelManager`
 
 ### `get_available_dhali_currencies()`
 
-Fetches current Dhali configuration and returns a dict:
+Fetches current Dhali configuration and returns a list of currencies:
 ```python
-{
-    "SEPOLIA": {
-        "USDC": NetworkCurrencyConfig(currency=..., destination_address=...),
-        ...
-    },
+[
+    Currency(network="SEPOLIA", code="USDC", scale=6, token_address="..."),
     ...
-}
+]
 ```
 
 Here’s a clean, minimal addition you can append near the end of the README (for example, just before the “Classes” section or after it):

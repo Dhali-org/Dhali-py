@@ -12,7 +12,7 @@ class TestDhaliEthChannelManager(unittest.TestCase):
         self.mock_account.address = "0xSender"
         self.mock_w3 = MagicMock()
         self.mock_currency = Currency(
-            "USDC", 6, "0x0000000000000000000000000000000000000001"
+            "ETHEREUM", "USDC", 6, "0x0000000000000000000000000000000000000001"
         )
         self.mock_client = MagicMock()
         self.mock_public_config = {
@@ -38,7 +38,6 @@ class TestDhaliEthChannelManager(unittest.TestCase):
         manager = DhaliEthChannelManager(
             account=self.mock_account,
             w3=self.mock_w3,
-            protocol="ETHEREUM",
             currency=self.mock_currency,
             http_client=self.mock_client,
             public_config=self.mock_public_config,
@@ -57,7 +56,6 @@ class TestDhaliEthChannelManager(unittest.TestCase):
         manager = DhaliEthChannelManager(
             account=self.mock_account,
             w3=self.mock_w3,
-            protocol="ETHEREUM",
             currency=self.mock_currency,
             http_client=self.mock_client,
         )
@@ -71,12 +69,11 @@ class TestDhaliEthChannelManager(unittest.TestCase):
         manager = DhaliEthChannelManager(
             self.mock_account,
             self.mock_w3,
-            "SEPOLIA",
-            self.mock_currency,
+            Currency("SEPOLIA", "USDC", 6, "0x..."),
             self.mock_client,
             self.mock_public_config,
         )
-        self.assertEqual(manager._get_protocol_name(), "SEPOLIA")
+        self.assertEqual(manager.currency.network, "SEPOLIA")
         self.assertEqual(manager.chain_id, 11155111)
 
     def test_init_without_http_client(self):
@@ -84,7 +81,6 @@ class TestDhaliEthChannelManager(unittest.TestCase):
         manager = DhaliEthChannelManager(
             account=self.mock_account,
             w3=self.mock_w3,
-            protocol="ETHEREUM",
             currency=self.mock_currency,
             http_client=None,
             public_config=self.mock_public_config,
@@ -95,7 +91,6 @@ class TestDhaliEthChannelManager(unittest.TestCase):
         manager = DhaliEthChannelManager(
             self.mock_account,
             self.mock_w3,
-            "ETHEREUM",
             self.mock_currency,
             self.mock_client,
             self.mock_public_config,
@@ -119,7 +114,6 @@ class TestDhaliEthChannelManager(unittest.TestCase):
         manager = DhaliEthChannelManager(
             self.mock_account,
             self.mock_w3,
-            "ETHEREUM",
             self.mock_currency,
             self.mock_client,
             self.mock_public_config,
@@ -148,7 +142,6 @@ class TestDhaliEthChannelManager(unittest.TestCase):
         manager = DhaliEthChannelManager(
             self.mock_account,
             self.mock_w3,
-            "ETHEREUM",
             self.mock_currency,
             self.mock_client,
             self.mock_public_config,
@@ -167,7 +160,6 @@ class TestDhaliEthChannelManager(unittest.TestCase):
         manager = DhaliEthChannelManager(
             self.mock_account,
             self.mock_w3,
-            "ETHEREUM",
             self.mock_currency,
             self.mock_client,
             self.mock_public_config,
@@ -194,7 +186,6 @@ class TestDhaliEthChannelManager(unittest.TestCase):
         manager = DhaliEthChannelManager(
             self.mock_account,
             self.mock_w3,
-            "ETHEREUM",
             self.mock_currency,
             self.mock_client,
             self.mock_public_config,
@@ -211,7 +202,6 @@ class TestDhaliEthChannelManager(unittest.TestCase):
         manager = DhaliEthChannelManager(
             self.mock_account,
             self.mock_w3,
-            "ETHEREUM",
             self.mock_currency,
             self.mock_client,
             self.mock_public_config,
@@ -235,7 +225,6 @@ class TestDhaliEthChannelManager(unittest.TestCase):
         manager = DhaliEthChannelManager(
             self.mock_account,
             self.mock_w3,
-            "ETHEREUM",
             self.mock_currency,
             self.mock_client,
             self.mock_public_config,
@@ -272,7 +261,6 @@ class TestDhaliEthChannelManager(unittest.TestCase):
         manager = DhaliEthChannelManager(
             self.mock_account,
             self.mock_w3,
-            "ETHEREUM",
             self.mock_currency,
             self.mock_client,
             self.mock_public_config,
@@ -291,7 +279,6 @@ class TestDhaliEthChannelManager(unittest.TestCase):
         manager = DhaliEthChannelManager(
             self.mock_account,
             self.mock_w3,
-            "ETHEREUM",
             self.mock_currency,
             http_client=mock_http,
             public_config=self.mock_public_config,
@@ -302,7 +289,7 @@ class TestDhaliEthChannelManager(unittest.TestCase):
         
         self.assertEqual(channel_id, "0xInjectedChannel")
         mock_query_rest.assert_called_once_with(
-            "ETHEREUM", ANY, self.mock_account.address.lower(), http_client=mock_http
+            manager.currency.network, ANY, self.mock_account.address.lower(), http_client=mock_http
         )
 
     @patch("dhali.dhali_eth_channel_manager.query_public_claim_info_rest")
@@ -311,7 +298,6 @@ class TestDhaliEthChannelManager(unittest.TestCase):
         manager = DhaliEthChannelManager(
             self.mock_account,
             self.mock_w3,
-            "ETHEREUM",
             self.mock_currency,
             http_client=None,
             public_config=self.mock_public_config,
@@ -322,7 +308,7 @@ class TestDhaliEthChannelManager(unittest.TestCase):
         
         self.assertEqual(channel_id, "0xDefaultRestChannel")
         mock_rest.assert_called_once_with(
-            "ETHEREUM", ANY, self.mock_account.address.lower(), http_client=requests
+            manager.currency.network, ANY, self.mock_account.address.lower(), http_client=requests
         )
 
 
