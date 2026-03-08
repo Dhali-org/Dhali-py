@@ -68,7 +68,7 @@ class DhaliEthChannelManager(PaymentChannelManager):
             "ETHEREUM": 1,
             "SEPOLIA": 11155111,
             "HOLESKY": 17000,
-            "LOCALHOST": 31337,
+            "HARDHAT": 31337,
         }
         if protocol not in mapping:
             raise ValueError(f"Unsupported protocol: {protocol}")
@@ -336,7 +336,7 @@ class DhaliEthChannelManager(PaymentChannelManager):
 
         claim = {
             "version": "2",
-            "account": self.account.address,
+            "account": self.account.address.lower(),
             "protocol": self.currency.network,
             "currency": {
                 "code": self.currency.code,
