@@ -28,10 +28,13 @@ jobs:
           pip install .
 
       - name: Install pytest
-        run: pip install pytest
+        run: pip install pytest pytest-asyncio
 
-      - name: Run pytest
-        run: pytest
+      - name: Run unit tests
+        run: pytest --ignore=tests/test_integration.py
+
+      - name: Run integration tests
+        run: pytest tests/test_integration.py
 
       - name: Install mypy
         run: pip install mypy types-requests

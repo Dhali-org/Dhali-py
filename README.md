@@ -126,6 +126,75 @@ x402_payload = wrap_as_x402_payment_payload(claim, payment_requirement)
 # 4. Use 'x402_payload' in the 'Payment' header
 ```
 
+
+---
+
+## Asset Management (for Providers)
+
+To receive off-chain payments, you can use the `DhaliAssetManager` to create and update your off-chain address.
+
+### 1. Create an Asset
+
+This generates an **Asset ID (UUID)**.
+
+#### XRPL Setup
+```python
+from xrpl.wallet import Wallet
+wallet = Wallet.from_seed("s...") # Your XRPL seed
+```
+
+#### EVM Setup
+```python
+from eth_account import Account
+account = Account.from_key("0x...") # Your private key
+```
+
+#### Initialization & Creation
+```python
+from dhali import DhaliAssetManager, WalletDescriptor, Currency
+import asyncio
+
+async def main():
+    # For XRPL
+    manager = DhaliAssetManager.xrpl(wallet)
+    wallet_descriptor = WalletDescriptor(wallet.classic_address, "XRPL.TESTNET")
+    
+    # OR For EVM
+    # manager = DhaliAssetManager.evm(account)
+    # wallet_descriptor = WalletDescriptor(account.address, "SEPOLIA")
+
+    currency = Currency("XRPL.TESTNET", "XRP", 6)
+
+    # Create the asset
+    result = await manager.create_asset(wallet_descriptor, currency)
+    print("Your new Asset ID:", result['uuid'])
+
+asyncio.run(main())
+```
+
+Once created, your asset is represented by an **off-chain facilitator address**:  
+`https://x402.api.dhali.io/<uuid>`
+
+This facilitator is used for protocol-level concerns like verification and settlement, while your actual service requests are sent to your **Resource Server**.
+
+### 2. Update an Asset
+
+You can update your asset's metadata (name, rates, etc.) at any time.
+
+```python
+from dhali import AssetUpdates
+
+async def main():
+    updates = AssetUpdates(
+        name="My Optimized AI API",
+        earning_rate=100,            # 100 drops per request
+        earning_type="per_request"   # or "per_second"
+    )
+
+    result = await manager.update_asset(asset_id, wallet_descriptor, updates)
+    print("Asset updated successfully")
+```
+
 ---
 
 ## Classes
