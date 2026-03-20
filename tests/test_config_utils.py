@@ -55,14 +55,18 @@ class TestConfigUtils(unittest.TestCase):
 
     @patch("dhali.config_utils.get_public_config")
     @patch("dhali.config_utils.requests.put")
-    def test_notify_admin_gateway_success(self, mock_put, mock_get_config):
+    @patch("dhali.config_utils.time.sleep")
+    def test_notify_admin_gateway_success(self, mock_sleep, mock_put, mock_get_config):
         mock_get_config.return_value = {"ROOT_API_ADMIN_URL": "wss://admin.gateway"}
+        mock_resp = Mock()
+        mock_resp.status_code = 200
+        mock_put.return_value = mock_resp
         from dhali.config_utils import notify_admin_gateway
 
         notify_admin_gateway("XRPL", "XRP", "rADDR", "CHANID")
 
         expected_url = "https://admin.gateway/public_claim_info/XRPL/XRP"
-        expected_payload = {"account": "rADDR", "channel_id": "0xCHANID"}
+        expected_payload = {"account": "rADDR", "channel_id": "CHANID"}
 
         mock_put.assert_called_once_with(
             expected_url, json=expected_payload, timeout=10

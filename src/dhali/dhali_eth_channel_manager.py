@@ -92,7 +92,7 @@ class DhaliEthChannelManager(PaymentChannelManager):
         self, receiver: str, token_address: str, nonce: int
     ) -> str:
         """
-        Calculates the channel ID locally. This matches Dhali-wallet's calculateChannelId.
+        Calculates the channel ID locally.
         Logic: keccak256(padded_sender + padded_receiver + padded_token + padded_nonce)
         """
 
@@ -289,7 +289,6 @@ class DhaliEthChannelManager(PaymentChannelManager):
                 "to": self.contract_address,
                 "data": cast(HexStr, calldata)
             })
-            # Based on Dhali-wallet, the amount is the 5th 32-byte word (index 4)
             # result is bytes, so each word is 32 bytes.
             # Index 4 is from byte 128 to 160.
             if len(result) < 160:

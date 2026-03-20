@@ -21,8 +21,7 @@ def wrap_as_x402_payment_payload(claim_base_64: str, payment_requirement_base_64
             req = accepts[0]
         else:
             req = accepts
-
-    # Normalize fields to match Dhali-wallet's PaymentRequirements defaults (camelCase)
+            
     normalized_req = {
         "scheme": req.get("scheme") or "",
         "network": req.get("network") or "",

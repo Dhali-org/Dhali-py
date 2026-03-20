@@ -159,7 +159,7 @@ def test_find_channel_raises_on_firestore_id_mismatch(monkeypatch, manager, wall
 
 def test_deposit_funds_existing_channel(monkeypatch, manager, wallet):
     fake_channel = {"channel_id": "CHANID", "amount": "500"}
-    monkeypatch.setattr(manager, "_find_channel", lambda: fake_channel)
+    monkeypatch.setattr(manager, "_find_channel", lambda **kwargs: fake_channel)
     captured = {}
 
     def fake_submit(tx, client, wallet_arg):
@@ -183,7 +183,7 @@ def test_deposit_create_channel_when_none(monkeypatch, manager, wallet):
     def raise_not_found():
         raise ChannelNotFound()
 
-    monkeypatch.setattr(manager, "_find_channel", raise_not_found)
+    monkeypatch.setattr(manager, "_find_channel", lambda **kwargs: raise_not_found())
     captured = {}
 
     def fake_submit(tx, client, wallet_arg):
@@ -208,7 +208,7 @@ def test_deposit_create_channel_when_none(monkeypatch, manager, wallet):
 
 def test_get_auth_token_success_default_amount(monkeypatch, manager, wallet):
     fake_channel = {"channel_id": "AB" * 32, "amount": "1001"}
-    monkeypatch.setattr(manager, "_find_channel", lambda: fake_channel)
+    monkeypatch.setattr(manager, "_find_channel", lambda **kwargs: fake_channel)
     monkeypatch.setattr(
         create_signed_claim,
         "build_paychan_auth_hex_string_to_be_signed",
@@ -232,7 +232,7 @@ def test_get_auth_token_success_default_amount(monkeypatch, manager, wallet):
 
 def test_get_auth_token_with_specific_amount(monkeypatch, manager, wallet):
     fake_channel = {"channel_id": "AB" * 32, "amount": "500"}
-    monkeypatch.setattr(manager, "_find_channel", lambda: fake_channel)
+    monkeypatch.setattr(manager, "_find_channel", lambda **kwargs: fake_channel)
     monkeypatch.setattr(
         create_signed_claim,
         "build_paychan_auth_hex_string_to_be_signed",
@@ -248,7 +248,7 @@ def test_get_auth_token_with_specific_amount(monkeypatch, manager, wallet):
 
 def test_get_auth_token_amount_exceeds(monkeypatch, manager):
     fake_channel = {"channel_id": "XCHAN", "amount": "100"}
-    monkeypatch.setattr(manager, "_find_channel", lambda: fake_channel)
+    monkeypatch.setattr(manager, "_find_channel", lambda **kwargs: fake_channel)
     with pytest.raises(ValueError) as excinfo:
         manager.get_auth_token(amount=200)
     assert "exceeds channel capacity" in str(excinfo.value)
