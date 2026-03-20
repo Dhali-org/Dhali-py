@@ -69,9 +69,25 @@ class DhaliXrplChannelManager(PaymentChannelManager):
             http_client=self.http_client,
         )
 
-    def _find_channel(self) -> Dict[str, Any]:
+    def _retrieve_channel_id_from_firestore_with_polling(self, timeout: int = 30) -> Optional[str]:
+        """
+        Polls Firestore until a channel ID is found or timeout is reached.
+        """
+        import time
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            channel_id = self._retrieve_channel_id_from_firestore()
+            if channel_id:
+                return channel_id
+            time.sleep(2)
+        return None
+
+    def _find_channel(self, timeout: int = 0) -> Dict[str, Any]:
         # Prioritize Firestore
-        firestore_channel_id = self._retrieve_channel_id_from_firestore()
+        if timeout > 0:
+            firestore_channel_id = self._retrieve_channel_id_from_firestore_with_polling(timeout=timeout)
+        else:
+            firestore_channel_id = self._retrieve_channel_id_from_firestore()
         
         if firestore_channel_id is None:
             raise ChannelNotFound(
@@ -99,7 +115,7 @@ class DhaliXrplChannelManager(PaymentChannelManager):
     def deposit(self, amount: int) -> Dict[str, Any]:
         tx: Union[PaymentChannelFund, PaymentChannelCreate]
         try:
-            ch = self._find_channel()
+            ch = self._find_channel(timeout=0)
             tx = PaymentChannelFund(
                 account=self.wallet.classic_address,
                 channel=ch["channel_id"],
@@ -118,7 +134,6 @@ class DhaliXrplChannelManager(PaymentChannelManager):
         # If we just created a channel, notify the gateway
         if (
             isinstance(tx, PaymentChannelCreate)
-            and result.result.get("status") == "success"
         ):
             # We need to find the channel ID from the result metadata
             # For XRPL, the channel ID is in the transaction metadata
@@ -144,10 +159,13 @@ class DhaliXrplChannelManager(PaymentChannelManager):
                         )
                     break
 
+            # Now poll Firestore to ensure it's indexed (setupBalanceListener behavior)
+            self._retrieve_channel_id_from_firestore_with_polling(timeout=30)
+
         return result.result
 
     def get_auth_token(self, amount: Optional[int] = None) -> str:
-        ch = self._find_channel()
+        ch = self._find_channel(timeout=10)
         total_amount = int(ch["amount"])
         allowed = amount if amount is not None else total_amount
         if allowed > total_amount:

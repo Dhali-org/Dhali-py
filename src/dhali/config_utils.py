@@ -1,4 +1,6 @@
 import requests
+import time
+import logging
 from typing import Dict, Any, NamedTuple, Optional, List
 from dhali.currency import Currency
 
@@ -8,6 +10,9 @@ class NetworkCurrencyConfig(NamedTuple):
     destination_address: str
 
 
+_PUBLIC_CONFIG_CACHE: Optional[Dict[str, Any]] = None
+
+
 def get_available_dhali_currencies(http_client=requests) -> List[Currency]:
     """
     Fetches and parses available Dhali currencies and configurations.
@@ -15,13 +20,18 @@ def get_available_dhali_currencies(http_client=requests) -> List[Currency]:
     Returns:
         A list of Currency objects.
     """
-    url = "https://raw.githubusercontent.com/Dhali-org/Dhali-config/master/public.prod.json"
-    try:
-        response = http_client.get(url)
-        response.raise_for_status()
-        data = response.json()
-    except Exception as e:
-        raise RuntimeError(f"Failed to fetch Dhali configuration: {e}")
+    global _PUBLIC_CONFIG_CACHE
+    if _PUBLIC_CONFIG_CACHE:
+        data = _PUBLIC_CONFIG_CACHE
+    else:
+        url = "https://raw.githubusercontent.com/Dhali-org/Dhali-config/master/public.prod.json"
+        try:
+            response = http_client.get(url, timeout=10, headers={'Connection': 'close'})
+            response.raise_for_status()
+            data = response.json()
+            _PUBLIC_CONFIG_CACHE = data
+        except Exception as e:
+            raise RuntimeError(f"Failed to fetch Dhali configuration: {e}")
 
     public_addresses = data.get("DHALI_PUBLIC_ADDRESSES", {})
     result: List[Currency] = []
@@ -49,11 +59,15 @@ def get_public_config(http_client=requests) -> Dict[str, Any]:
     """
     Fetches the raw Dhali public configuration JSON.
     """
+    global _PUBLIC_CONFIG_CACHE
+    if _PUBLIC_CONFIG_CACHE:
+        return _PUBLIC_CONFIG_CACHE
     url = "https://raw.githubusercontent.com/Dhali-org/Dhali-config/master/public.prod.json"
     try:
-        response = http_client.get(url)
+        response = http_client.get(url, timeout=10, headers={'Connection': 'close'})
         response.raise_for_status()
-        return response.json()
+        _PUBLIC_CONFIG_CACHE = response.json()
+        return _PUBLIC_CONFIG_CACHE
     except Exception as e:
         raise RuntimeError(f"Failed to fetch Dhali configuration: {e}")
 
@@ -141,6 +155,10 @@ def query_public_claim_info_rest(
     return None
 
 
+def is_evm_protocol(protocol: str) -> bool:
+    return protocol.upper() in ["ETHEREUM", "SEPOLIA", "HOLESKY", "HARDHAT"]
+
+
 def notify_admin_gateway(
     protocol: str,
     currency_identifier: str,
@@ -160,16 +178,31 @@ def notify_admin_gateway(
     http_root_url = root_url.replace("wss://", "https://").replace("ws://", "http://")
     url = f"{http_root_url}/public_claim_info/{protocol}/{currency_identifier}"
 
-    if not channel_id.startswith("0x"):
-        channel_id = "0x" + channel_id
+    if is_evm_protocol(protocol) and not channel_id.startswith("0x"):
+        channel_id = f"0x{channel_id}"
 
     payload = {
-        "account": account_address,
+        "account": account_address.lower() if is_evm_protocol(protocol) else account_address,
         "channel_id": channel_id,
     }
 
-    try:
-        http_client.put(url, json=payload, timeout=10)
-    except Exception:
-        # Best effort notification
-        pass
+    
+    retry_count = 0
+    max_retries = 10
+    delay = 1.0
+
+    while retry_count <= max_retries:
+        try:
+            response = http_client.put(url, json=payload, timeout=10)
+            if 200 <= response.status_code < 300:
+                return
+        except Exception as e:
+            pass
+
+        if retry_count < max_retries:
+            time.sleep(delay)
+            delay *= 2
+        retry_count += 1
+    
+    print(f"Failed to notify public claim info after {max_retries} retries.")
+
