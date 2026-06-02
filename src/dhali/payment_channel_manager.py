@@ -3,8 +3,6 @@ from typing import Any
 
 
 class ChannelNotFound(Exception):
-    """Raised when an expected payment channel is not found on-chain or in Firestore."""
-
     pass
 
 

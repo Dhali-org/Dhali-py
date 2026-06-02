@@ -1,6 +1,7 @@
-from .dhali_eth_channel_manager import DhaliEthChannelManager
+from .dhali_channel_manager import DhaliChannelManager
+from .payment_channel_manager import ChannelNotFound
 from .dhali_xrpl_channel_manager import DhaliXrplChannelManager
-from .dhali_channel_manager import DhaliChannelManager, ChannelNotFound
+from .dhali_eth_channel_manager import DhaliEthChannelManager
 from .dhali_asset_manager import DhaliAssetManager
 from .base_asset_manager import BaseAssetManager
 from .dhali_xrpl_asset_manager import DhaliXrplAssetManager

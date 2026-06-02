@@ -11,7 +11,7 @@ from web3.types import TxParams, TxReceipt, HexStr
 import requests
 
 from dhali.create_signed_claim import get_ethereum_claim_typed_data
-from dhali.payment_channel_manager import PaymentChannelManager, ChannelNotFound
+from .payment_channel_manager import PaymentChannelManager, ChannelNotFound
 from dhali.currency import Currency
 from dhali.config_utils import (
     get_public_config,
@@ -37,6 +37,7 @@ class DhaliEthChannelManager(PaymentChannelManager):
             http_client=self.http_client
         )
         self.chain_id = self._get_chain_id_from_protocol(self.currency.network)
+        self._last_nonce = None
 
         # Resolve destination address from config
         try:
@@ -238,13 +239,21 @@ class DhaliEthChannelManager(PaymentChannelManager):
         # Add 10% buffer to avoid 'underpriced' errors on congested or lagging RPCs
         buffered_gas_price = int(gas_price * 1.1)
 
+        rpc_nonce = self.w3.eth.get_transaction_count(self.account.address, "pending")
+        if self._last_nonce is not None and rpc_nonce <= self._last_nonce:
+            nonce = self._last_nonce + 1
+        else:
+            nonce = rpc_nonce
+        
+        self._last_nonce = nonce
+
         tx_params = {
             "from": self.account.address,
             "to": to,
             "value": value,
             "data": data,
             "gasPrice": buffered_gas_price,
-            "nonce": self.w3.eth.get_transaction_count(self.account.address, "pending"),
+            "nonce": nonce,
             "chainId": self.chain_id,
         }
 
@@ -257,7 +266,14 @@ class DhaliEthChannelManager(PaymentChannelManager):
 
     def _send_transaction(self, tx: Dict[str, Any]) -> TxReceipt:
         signed_tx = self.account.sign_transaction(tx)
-        tx_hash = self.w3.eth.send_raw_transaction(signed_tx.raw_transaction)
+        try:
+            tx_hash = self.w3.eth.send_raw_transaction(signed_tx.raw_transaction)
+        except Exception as e:
+            if "already known" in str(e).lower():
+                # Transaction is already in the pool, we can use the signed hash to wait
+                tx_hash = signed_tx.hash
+            else:
+                raise e
 
         # Robust polling for receipt (handles transient RPC disconnections)
         import time

@@ -64,7 +64,7 @@ async def test_xrpl_comprehensive_integration():
     print("Asset updated successfully")
 
     # 4. Create Channel (Deposit)
-    rpc_client = JsonRpcClient("https://testnet.xrpl-labs.com/")
+    rpc_client = JsonRpcClient("https://s.altnet.rippletest.net:51234/")
     channel_manager = DhaliChannelManager.xrpl(wallet=wallet, rpc_client=rpc_client, currency=currency)
     print("Performing XRPL deposit...")
     amount_drops = 1000000 # 1 XRP
@@ -154,6 +154,36 @@ async def test_xrpl_comprehensive_integration():
         print(f"Channel closure initiated: {success_msg.get('message')}")
 
 @pytest.mark.asyncio
+async def test_xrpl_hardening_scenarios():
+    """
+    New integration tests for XRPL covering sequential deposits and capacity violations.
+    """
+    if not XRPL_SECRET:
+        pytest.skip("XRPL_TESTNET_SECRET not set")
+
+    wallet = Wallet.from_secret(XRPL_SECRET)
+    currency = Currency("XRPL.TESTNET", "XRP", 6)
+    rpc_client = JsonRpcClient("https://s.altnet.rippletest.net:51234/")
+    channel_manager = DhaliChannelManager.xrpl(wallet=wallet, rpc_client=rpc_client, currency=currency)
+
+    # 1. Sequential Deposit
+    print("\n[Hardening] Testing sequential XRPL deposit...")
+    amount = 500000 # 0.5 XRP
+    deposit_result = channel_manager.deposit(amount)
+    assert deposit_result is not None
+    print("Sequential XRPL deposit successful")
+
+    # 2. Capacity Violation
+    print("[Hardening] Testing XRPL claim capacity enforcement...")
+    with pytest.raises(ValueError, match="exceeds channel capacity"):
+        channel_manager.get_auth_token(amount=10**12) # Extreme amount
+    
+    # 3. Valid Small Claim
+    specific_token = channel_manager.get_auth_token(amount=100)
+    assert specific_token is not None
+    print("XRPL capacity and specific claims verified")
+
+@pytest.mark.asyncio
 async def test_evm_comprehensive_integration():
 
     if not SEPOLIA_SECRET:
@@ -184,7 +214,7 @@ async def test_evm_comprehensive_integration():
     print("EVM Asset updated successfully")
 
     # 4. Create Channel (Deposit)
-    w3 = Web3(Web3.HTTPProvider("https://ethereum-sepolia.publicnode.com", request_kwargs={'timeout': 120}))
+    w3 = Web3(Web3.HTTPProvider("https://gateway.tenderly.co/public/sepolia", request_kwargs={'timeout': 120}))
     channel_manager = DhaliChannelManager.evm(account=account, w3=w3, currency=currency)
     print("Performing EVM deposit...")
     amount_wei = 10**14 # 0.0001 ETH
@@ -271,3 +301,33 @@ async def test_evm_comprehensive_integration():
              
         assert success_msg.get("success") is True
         print(f"Channel closure initiated: {success_msg.get('message')}")
+
+@pytest.mark.asyncio
+async def test_evm_hardening_scenarios():
+    """
+    New integration tests for EVM covering sequential deposits and capacity violations.
+    """
+    if not SEPOLIA_SECRET:
+        pytest.skip("SEPOLIA_TESTNET_SECRET not set")
+
+    account = Account.from_key(SEPOLIA_SECRET)
+    currency = Currency("SEPOLIA", "ETH", 18)
+    w3 = Web3(Web3.HTTPProvider("https://gateway.tenderly.co/public/sepolia", request_kwargs={'timeout': 120}))
+    channel_manager = DhaliChannelManager.evm(account=account, w3=w3, currency=currency)
+
+    # 1. Sequential Deposit (Tests internal nonce tracking)
+    print("\n[Hardening] Testing sequential EVM deposit...")
+    amount = 5 * 10**13 # 0.00005 ETH
+    deposit_receipt = channel_manager.deposit(amount)
+    assert deposit_receipt.status == 1
+    print("Sequential EVM deposit successful")
+
+    # 2. Capacity Violation
+    print("[Hardening] Testing EVM claim capacity enforcement...")
+    with pytest.raises(ValueError, match="exceeds channel capacity"):
+        channel_manager.get_auth_token(amount=10**18) # 1 ETH
+    
+    # 3. Valid Small Claim
+    specific_token = channel_manager.get_auth_token(amount=50000)
+    assert specific_token is not None
+    print("EVM capacity and specific claims verified")

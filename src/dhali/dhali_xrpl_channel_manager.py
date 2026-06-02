@@ -4,7 +4,7 @@ from typing import Optional, Dict, Any, Union
 from dhali.create_signed_claim import (
     build_paychan_auth_hex_string_to_be_signed,
 )
-from dhali.payment_channel_manager import PaymentChannelManager, ChannelNotFound
+from .payment_channel_manager import PaymentChannelManager, ChannelNotFound
 from dhali.currency import Currency
 from xrpl.clients import JsonRpcClient
 from xrpl.wallet import Wallet
@@ -95,17 +95,24 @@ class DhaliXrplChannelManager(PaymentChannelManager):
                 f"{self.wallet.classic_address} to {self.destination}"
             )
 
-        req = AccountChannels(
-            account=self.wallet.classic_address,
-            destination_account=self.destination,
-            ledger_index="validated",
-        )
-        resp = self.rpc_client.request(req)
-        channels = resp.result.get("channels", [])
+        marker = None
+        while True:
+            req = AccountChannels(
+                account=self.wallet.classic_address,
+                destination_account=self.destination,
+                ledger_index="validated",
+                marker=marker,
+            )
+            resp = self.rpc_client.request(req)
+            channels = resp.result.get("channels", [])
 
-        for ch in channels:
-            if ch["channel_id"] == firestore_channel_id:
-                return ch
+            for ch in channels:
+                if ch["channel_id"] == firestore_channel_id:
+                    return ch
+            
+            marker = resp.result.get("marker")
+            if not marker:
+                break
 
         raise ChannelNotFound(
             f"Firestore channel {firestore_channel_id} not found on-chain for "
@@ -180,10 +187,14 @@ class DhaliXrplChannelManager(PaymentChannelManager):
             "version": "2",
             "account": self.wallet.classic_address,
             "protocol": self.currency.network,
-            "currency": {"code": "XRP", "scale": 6},
+            "currency": {
+                "code": self.currency.code,
+                "scale": self.currency.scale,
+                "issuer": self.currency.token_address,
+            },
             "destination_account": self.destination,
             "authorized_to_claim": str(allowed),
-            "channel_id": ch["channel_id"],
+            "channel_id": str(ch["channel_id"]),
             "signature": signature,
         }
         return base64.b64encode(json.dumps(claim_dict).encode("utf-8")).decode("utf-8")

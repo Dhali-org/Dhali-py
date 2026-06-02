@@ -7,11 +7,12 @@ on:
 
 jobs:
   test:
-    name: Test on Python ${{ matrix.python-version }}
+    name: Python ${{ matrix.python-version }} | xrpl-py ${{ matrix.xrpl-version }}
     runs-on: ubuntu-latest
     strategy:
       matrix:
         python-version: [3.11]
+        xrpl-version: [2.5.0, 3.0.0, 4.0.0]
 
     steps:
       - name: Checkout repository
@@ -22,15 +23,16 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install dependencies and test tools
+      - name: Install dependencies (xrpl-py ${{ matrix.xrpl-version }})
         run: |
           python -m pip install --upgrade pip
           pip install ".[testing]"
+          pip install xrpl-py==${{ matrix.xrpl-version }}
 
-      - name: Run unit tests
+      - name: Run unit tests (xrpl-py ${{ matrix.xrpl-version }})
         run: pytest --ignore=tests/test_integration.py
 
-      - name: Run integration tests
+      - name: Run integration tests (xrpl-py ${{ matrix.xrpl-version }})
         env:
           XRPL_TESTNET_SECRET: ${{ secrets.XRPL_TESTNET_SECRET }}
           SEPOLIA_TESTNET_SECRET: ${{ secrets.SEPOLIA_TESTNET_SECRET }}

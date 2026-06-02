@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import websockets.client
 import websockets.exceptions
 from typing import Optional, Any, Dict
@@ -7,6 +8,8 @@ from dhali.currency import Currency
 from dhali.wallet_descriptor import WalletDescriptor
 from dhali.asset_updates import AssetUpdates
 from .config_utils import get_public_config
+
+logger = logging.getLogger(__name__)
 
 class BaseAssetManager:
     """
@@ -43,7 +46,7 @@ class BaseAssetManager:
             return True
         return False
 
-    async def create_asset(self, wallet_descriptor: WalletDescriptor, currency: Currency):
+    async def create_asset(self, wallet_descriptor: WalletDescriptor, currency: Currency, timeout: int = 60):
         if not isinstance(wallet_descriptor, WalletDescriptor):
             raise ValueError("wallet_descriptor must be an instance of WalletDescriptor")
         if not isinstance(currency, Currency):
@@ -59,10 +62,18 @@ class BaseAssetManager:
                 }
             }))
 
+            start_time = asyncio.get_event_loop().time()
             while True:
+                if asyncio.get_event_loop().time() - start_time > timeout:
+                    raise asyncio.TimeoutError("Timeout waiting for asset creation response")
+                
                 try:
-                    message_str = await ws.recv()
+                    message_str = await asyncio.wait_for(ws.recv(), timeout=30)
                     message = json.loads(message_str)
+
+                    if not isinstance(message, dict):
+                        logger.warning(f"Unexpected message format: {message}")
+                        continue
 
                     if await self._handle_auth(ws, message, wallet_descriptor):
                         continue
@@ -75,25 +86,35 @@ class BaseAssetManager:
                     elif message.get("schema") == "api_admin_gateway_create_successful":
                         return message
                     elif "qr_code_url" in message:
-                        print(f"Scan this QR code to authenticate: {message['qr_code_url']}")
+                        logger.info(f"Authentication required. QR code URL: {message['qr_code_url']}")
                     elif "error" in message:
-                        raise Exception(message["error"])
+                        raise Exception(message.get("error") or "Update failed")
                 except websockets.exceptions.ConnectionClosed as e:
                     if e.code not in [1000, 1005]:
                         raise Exception(f"WebSocket closed with code {e.code}: {e.reason}")
                     break
+                except asyncio.TimeoutError:
+                    raise asyncio.TimeoutError("WebSocket receive timed out")
 
-    async def update_asset(self, dhali_id: str, wallet_descriptor: WalletDescriptor, updates: AssetUpdates):
+    async def update_asset(self, dhali_id: str, wallet_descriptor: WalletDescriptor, updates: AssetUpdates, timeout: int = 60):
         if not isinstance(wallet_descriptor, WalletDescriptor):
             raise ValueError("wallet_descriptor must be an instance of WalletDescriptor")
         if not isinstance(updates, AssetUpdates):
             raise ValueError("updates must be an instance of AssetUpdates")
 
         async with websockets.client.connect(f"{self.base_url}/{dhali_id}/update", open_timeout=30) as ws:
+            start_time = asyncio.get_event_loop().time()
             while True:
+                if asyncio.get_event_loop().time() - start_time > timeout:
+                    raise asyncio.TimeoutError("Timeout waiting for asset update response")
+
                 try:
-                    message_str = await ws.recv()
+                    message_str = await asyncio.wait_for(ws.recv(), timeout=30)
                     message = json.loads(message_str)
+
+                    if not isinstance(message, dict):
+                        logger.warning(f"Unexpected message format: {message}")
+                        continue
 
                     if await self._handle_auth(ws, message, wallet_descriptor):
                         continue
@@ -117,10 +138,12 @@ class BaseAssetManager:
                     elif message.get("schema") == "api_admin_gateway_update_response":
                         return message
                     elif "qr_code_url" in message:
-                        print(f"Scan this QR code to authenticate: {message['qr_code_url']}")
+                        logger.info(f"Authentication required. QR code URL: {message['qr_code_url']}")
                     elif "error" in message or message.get("status") == "failed":
                         raise Exception(message.get("error") or "Update failed")
                 except websockets.exceptions.ConnectionClosed as e:
                     if e.code not in [1000, 1005]:
                         raise Exception(f"WebSocket closed with code {e.code}: {e.reason}")
                     break
+                except asyncio.TimeoutError:
+                    raise asyncio.TimeoutError("WebSocket receive timed out")

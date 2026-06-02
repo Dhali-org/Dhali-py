@@ -11,6 +11,8 @@ class TestDhaliEthChannelManager(unittest.TestCase):
         self.mock_account = MagicMock()
         self.mock_account.address = "0xSender"
         self.mock_w3 = MagicMock()
+        self.mock_w3.eth.get_transaction_count.return_value = 1
+        self.mock_w3.eth.gas_price = 10**9
         self.mock_currency = Currency(
             "ETHEREUM", "USDC", 6, "0x0000000000000000000000000000000000000001"
         )

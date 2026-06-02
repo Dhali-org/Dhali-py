@@ -196,7 +196,7 @@ def notify_admin_gateway(
             response = http_client.put(url, json=payload, timeout=10)
             if 200 <= response.status_code < 300:
                 return
-        except Exception as e:
+        except Exception:
             pass
 
         if retry_count < max_retries:
@@ -204,5 +204,5 @@ def notify_admin_gateway(
             delay *= 2
         retry_count += 1
     
-    print(f"Failed to notify public claim info after {max_retries} retries.")
+    logger.error(f"Failed to notify public claim info after {max_retries} retries.")
 

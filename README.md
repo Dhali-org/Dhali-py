@@ -193,6 +193,52 @@ async def main():
 
     result = await manager.update_asset(asset_id, wallet_descriptor, updates)
     print("Asset updated successfully")
+
+### 3. Closing a Channel
+
+To close a channel and settle final balances, use the **Admin Gateway WebSocket**. This process involves a challenge-response signature to verify ownership.
+
+```python
+import websockets
+import json
+import xrpl
+
+async def close_channel():
+    ws_url = "wss://api.admin.gateway/ws/close-channel" # or from public config
+    
+    async with websockets.connect(ws_url) as ws:
+        # 1. Send Closure Request
+        await ws.send(json.dumps({
+            "schema": "api_admin_gateway_closure_request",
+            "schema_version": "1.0",
+            "wallet": {
+                "type": "Dhali-py",
+                "address": wallet.classic_address,
+                "protocol": "XRPL.TESTNET",
+                "publicKey": wallet.public_key,
+                "currency": {"code": "XRP", "scale": 6, "issuer": None}
+            },
+            "protocol": "XRPL.TESTNET",
+            "currency": "XRP"
+        }))
+        
+        # 2. Handle Signature Challenge
+        msg = json.loads(await ws.recv())
+        if msg.get("schema") == "api_admin_gateway_message_to_be_signed":
+            message_bytes = json.dumps(msg["message"], separators=(",", ":")).encode()
+            signature = xrpl.core.keypairs.sign(message_bytes, wallet.private_key)
+            
+            await ws.send(json.dumps({
+                "schema": "api_admin_gateway_signed_message_response",
+                "schema_version": "1.1",
+                "signature": signature,
+                "public_key": wallet.public_key
+            }))
+        
+        # 3. Final Confirmation
+        response = json.loads(await ws.recv())
+        print("Closure Status:", response.get("message"))
+```
 ```
 
 ---
@@ -220,8 +266,15 @@ Here’s a clean, minimal addition you can append near the end of the README (fo
 
 ## Async Workflows
 
-Currently, `dhali-py` provides a synchronous interface for managing payment channels and generating claims.
+The `DhaliAssetManager` provides native `async/await` support for all asset-related operations. 
 
-If you would like to see **native async/await support** (e.g., `async` workflows using `asyncio`, async Web3 providers, or async XRPL clients), please drop us a message and let us know. Community feedback helps us prioritise features 🚀
+For `DhaliChannelManager`, we currently provide a synchronous interface for high-performance claim generation. If you require a full async implementation for channel management, please let us know!
+
+> [!NOTE]
+> If you are running `dhali-py` integration tests or library calls within an existing event loop (like Jupyter or `pytest-asyncio`), you may need `nest-asyncio`:
+> ```python
+> import nest_asyncio
+> nest_asyncio.apply()
+> ```
 
 ---
