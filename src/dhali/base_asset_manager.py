@@ -1,6 +1,6 @@
 import asyncio
 import json
-import websockets.client
+from websockets import connect  # type: ignore
 import websockets.exceptions
 from typing import Optional, Any, Dict
 from dhali.currency import Currency
@@ -49,7 +49,7 @@ class BaseAssetManager:
         if not isinstance(currency, Currency):
             raise ValueError("currency must be an instance of Currency")
 
-        async with websockets.client.connect(f"{self.base_url}/create", open_timeout=30) as ws:
+        async with connect(f"{self.base_url}/create", open_timeout=30) as ws:
             await ws.send(json.dumps({
                 "owner": wallet_descriptor.to_json(),
                 "currency": {
@@ -89,7 +89,7 @@ class BaseAssetManager:
         if not isinstance(updates, AssetUpdates):
             raise ValueError("updates must be an instance of AssetUpdates")
 
-        async with websockets.client.connect(f"{self.base_url}/{dhali_id}/update", open_timeout=30) as ws:
+        async with connect(f"{self.base_url}/{dhali_id}/update", open_timeout=30) as ws:
             while True:
                 try:
                     message_str = await ws.recv()
