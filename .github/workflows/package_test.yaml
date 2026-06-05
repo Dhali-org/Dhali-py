@@ -7,11 +7,13 @@ on:
 
 jobs:
   test:
-    name: Test on Python ${{ matrix.python-version }}
+    name: Test on Python ${{ matrix.python-version }} (xrpl-py ${{ matrix.xrpl-py-version }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
         python-version: [3.11]
+        xrpl-py-version: ['2.5.0', '3.0.0', '4.5.0']
+      max-parallel: 1
 
     steps:
       - name: Checkout repository
@@ -26,6 +28,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install ".[testing]"
+          pip install "xrpl-py==${{ matrix.xrpl-py-version }}"
 
       - name: Run unit tests
         run: pytest --ignore=tests/test_integration.py

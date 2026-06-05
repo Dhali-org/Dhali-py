@@ -64,7 +64,7 @@ async def test_xrpl_comprehensive_integration():
     print("Asset updated successfully")
 
     # 4. Create Channel (Deposit)
-    rpc_client = JsonRpcClient("https://testnet.xrpl-labs.com/")
+    rpc_client = JsonRpcClient("https://s.altnet.rippletest.net:51234/")
     channel_manager = DhaliChannelManager.xrpl(wallet=wallet, rpc_client=rpc_client, currency=currency)
     print("Performing XRPL deposit...")
     amount_drops = 1000000 # 1 XRP
