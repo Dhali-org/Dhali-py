@@ -82,7 +82,7 @@ async def test_xrpl_comprehensive_integration():
     print(f"Settling via facilitator using asset {asset_uuid}...")
     public_config = get_public_config()
     facilitator_url = get_facilitator_url(public_config)
-    settle_url = f"{facilitator_url}/v2/{asset_uuid}/settle"
+    settle_url = f"{facilitator_url}/v2/settle"
     
     # Use the wrap function as suggested by the user
     requirements = {
@@ -202,7 +202,7 @@ async def test_evm_comprehensive_integration():
     print(f"Settling via facilitator using asset {asset_uuid}...")
     public_config = get_public_config()
     facilitator_url = get_facilitator_url(public_config)
-    settle_url = f"{facilitator_url}/v2/{asset_uuid}/settle"
+    settle_url = f"{facilitator_url}/v2/settle"
     
     # Use the wrap function as suggested by the user
     requirements = {
