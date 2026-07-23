@@ -109,7 +109,10 @@ if response.status_code == 402:
 
 ## Standardized x402 Payments
 
-For APIs that follow the x402 standard, you must wrap your auth token (claim) with the payment requirement (retrieved from the `payment-required` header of a 402 response).
+For APIs that follow the x402 standard, you must wrap your auth token (claim) with the payment requirement (retrieved from the `payment-required` header of a 402 response). 
+This can be verified using Dhali's **off-chain facilitator**:  
+`https://x402.api.dhali.io`
+
 
 ```python
 from dhali import wrap_as_x402_payment_payload
@@ -171,11 +174,6 @@ async def main():
 
 asyncio.run(main())
 ```
-
-Once created, your asset is represented by an **off-chain facilitator address**:  
-`https://x402.api.dhali.io/<uuid>`
-
-This facilitator is used for protocol-level concerns like verification and settlement, while your actual service requests are sent to your **Resource Server**.
 
 ### 2. Update an Asset
 
