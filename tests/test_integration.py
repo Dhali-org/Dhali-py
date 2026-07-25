@@ -86,7 +86,7 @@ async def test_xrpl_comprehensive_integration():
     
     # Use the wrap function as suggested by the user
     requirements = {
-        "scheme": "dhali",
+        "scheme": "batch-settlement",
         "network": "xrpl:1",
         "asset": "xrpl:1/native:xrp",
         "amount": "100",
@@ -206,7 +206,7 @@ async def test_evm_comprehensive_integration():
     
     # Use the wrap function as suggested by the user
     requirements = {
-        "scheme": "dhali",
+        "scheme": "batch-settlement",
         "network": "eip155:11155111",
         "asset": "eip155:11155111/native:eth",
         "amount": "100",
