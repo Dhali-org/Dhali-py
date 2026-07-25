@@ -18,7 +18,7 @@ def test_wrap_as_x402_payment_payload():
     mock_req_full = {
         "accepts": [
             {
-                "scheme": "dhali",
+                "scheme": "batch-settlement",
                 "network": "xrpl:0",
                 "asset": "xrpl:0/native:xrp",
                 "amount": "70",
@@ -43,7 +43,7 @@ def test_wrap_as_x402_payment_payload_dhali_app():
     claim_base64 = base64.b64encode(json.dumps(mock_claim).encode("utf-8")).decode("utf-8")
 
     mock_req_dhali_app = {
-        "scheme": "dhali",
+        "scheme": "batch-settlement",
         "network": "eip155:1",
         "payTo": "0x3D85634D9EA2854F4276eE5372Bf32Eb4ACDbf77",
         "price": {
